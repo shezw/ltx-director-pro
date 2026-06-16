@@ -65,7 +65,8 @@ long-auto-renders/test-001/
 设计用途是：
 
 - 外层 long-auto runner 读取完整 30s/60s Director 时间线。
-- 按手动切点、camera 边界、local prompt / keyframe 边界和最长 15s 限制自动切段。
+- 按手动切点、camera 边界和最长 15s 限制自动切段。
+- 手动切点默认有 0.25s 保护区，保护区内的 camera / local prompt / keyframe 自动切点会被忽略，避免出现很碎的相邻切段。
 - 每段用 `long-auto.json` 生成一个短视频和一张 tail-frame PNG。
 - 如果下一段起点 0.25s 容差内有 keyframe，用 keyframe；否则使用上一段 tail-frame 作为首帧。
 - 最终把所有 segment video concat，并按需要 mux 回完整原始音频。
@@ -76,9 +77,9 @@ long-auto-renders/test-001/
 timeline_data.cutSegments
 ```
 
-直接在 ComfyUI 里单独 queue `long-auto.json` 时，不会再硬跑完整 30s/60s。节点会读取 `timeline_data.meta.longAuto=true`，先按切点和镜头边界规划，然后只渲染当前 `Render Segment`。默认是第 0 段；可以在时间线设置按钮里切换 `Render Segment`。
+直接在 ComfyUI 里 queue `long-auto.json` 时，不会再硬跑完整 30s/60s。节点会读取 `timeline_data.meta.longAuto=true`，先按切点和镜头边界规划，再顺序渲染所有 segment：第 N 段完成后从 ComfyUI history 读取 tail-frame PNG，如果第 N+1 段起点没有 keyframe，就把这张 tail-frame 自动作为下一段首帧。
 
-注意：单次 ComfyUI Queue 仍然只会生成一个 segment。真正的 30s/60s 连续任务需要外层 runner/orchestrator 顺序执行每段：第 N 段跑完后拿到 tail-frame PNG；如果第 N+1 段起点没有 keyframe，就把这张 tail-frame 作为下一段首帧。
+如果只想测试某一个 segment，可以在时间线设置按钮里切换 `Render Segment`，或者关闭 `queueAllByDefault` 后只渲染当前 active segment。
 
 ## Pro Console 最新版
 

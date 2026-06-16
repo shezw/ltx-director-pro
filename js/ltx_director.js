@@ -1026,16 +1026,25 @@ class TimelineEditor {
   getLongAutoPlan() {
     const durationFrames = this.getDurationFrames();
     const frameRate = this.getFrameRate();
-    const maxFrames = Math.max(1, Math.floor(((this.timeline.meta && this.timeline.meta.maxSegmentSeconds) || 15) * frameRate));
+    const meta = this.timeline.meta || {};
+    const maxFrames = Math.max(1, Math.floor((meta.maxSegmentSeconds || 15) * frameRate));
+    const manualToleranceFrames = Math.max(0, Math.round((meta.manualCutToleranceSeconds ?? 0.25) * frameRate));
+    const manualFrames = [];
     const hard = new Map();
-    const addBoundary = (frame, reason) => {
+    const isNearManualCut = (frame) => manualFrames.some((cutFrame) => Math.abs(cutFrame - frame) <= manualToleranceFrames);
+    const addBoundary = (frame, reason, opts = {}) => {
       const f = clamp(Math.round(frame || 0), 0, durationFrames);
       if (f <= 0 || f >= durationFrames) return;
+      if (!opts.manual && isNearManualCut(f)) return;
       if (!hard.has(f)) hard.set(f, new Set());
       hard.get(f).add(reason);
     };
     for (const cut of this.timeline.cutSegments || []) {
-      addBoundary(cut.start ?? cut.frame ?? 0, "manual_cut");
+      const frame = clamp(Math.round(cut.start ?? cut.frame ?? 0), 0, durationFrames);
+      if (frame > 0 && frame < durationFrames) manualFrames.push(frame);
+    }
+    for (const frame of manualFrames) {
+      addBoundary(frame, "manual_cut", { manual: true });
     }
     for (const cam of this.timeline.cameraSegments || []) {
       addBoundary(cam.start || 0, "camera_start");
@@ -1053,6 +1062,8 @@ class TimelineEditor {
       let cursor = hardPoints[i];
       const right = hardPoints[i + 1];
       while (right - cursor > maxFrames) {
+        const limit = cursor + maxFrames;
+        if (isNearManualCut(right) && right - limit <= manualToleranceFrames) break;
         cursor += maxFrames;
         addCut(cursor, ["max_length"]);
       }
@@ -1078,6 +1089,32 @@ class TimelineEditor {
   }
 
   async queueCurrentGraphPrompt() {
+    if (app?.graphToPrompt && api) {
+      const prompt = await app.graphToPrompt();
+      if (typeof api.queuePrompt === "function") {
+        const queued = await api.queuePrompt(0, prompt);
+        const promptId = queued?.prompt_id || queued?.promptId || queued?.id;
+        if (promptId) return String(promptId);
+        throw new Error(`ComfyUI queued the prompt but did not return a prompt_id: ${JSON.stringify(queued)}`);
+      }
+      const resp = await api.fetchApi("/prompt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          client_id: api.clientId,
+          prompt: prompt.output,
+          extra_data: { extra_pnginfo: { workflow: prompt.workflow } },
+        }),
+      });
+      const data = await resp.json();
+      if (data?.node_errors && Object.keys(data.node_errors).length) {
+        throw new Error(`ComfyUI rejected the prompt: ${JSON.stringify(data.node_errors)}`);
+      }
+      const promptId = data?.prompt_id || data?.promptId || data?.id;
+      if (promptId) return String(promptId);
+      throw new Error(`ComfyUI did not return a prompt_id: ${JSON.stringify(data)}`);
+    }
+
     const queueFn = app?.__shezwOriginalQueuePrompt || app?.queuePrompt;
     if (typeof queueFn === "function") {
       try {
@@ -1093,13 +1130,68 @@ class TimelineEditor {
     throw new Error("ComfyUI queuePrompt API is unavailable in this frontend build.");
   }
 
+  async waitForPromptHistory(promptId, timeoutMs = 1000 * 60 * 60 * 6) {
+    if (!promptId || typeof promptId !== "string") return null;
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+      const resp = await api.fetchApi(`/history/${encodeURIComponent(promptId)}`);
+      if (resp.ok) {
+        const data = await resp.json();
+        const item = data?.[promptId] || data;
+        if (item?.status?.status_str === "error") {
+          throw new Error(`ComfyUI prompt ${promptId} failed.`);
+        }
+        if (item?.outputs && Object.keys(item.outputs).length) return item;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+    throw new Error(`Timed out waiting for ComfyUI prompt ${promptId} to finish.`);
+  }
+
+  getTailSaveNodeIds() {
+    const nodes = app?.graph?._nodes || [];
+    return nodes
+      .filter((node) => {
+        const title = `${node.title || ""} ${node.type || ""}`.toLowerCase();
+        const widgetText = (node.widgets || []).map((w) => `${w.value || ""}`).join(" ").toLowerCase();
+        return title.includes("save last frame") || title.includes("tail frame") || widgetText.includes("tail-frame") || widgetText.includes("tail_frame");
+      })
+      .map((node) => String(node.id));
+  }
+
+  extractTailFrameFromHistory(history) {
+    const outputs = history?.outputs || {};
+    const preferred = new Set(this.getTailSaveNodeIds());
+    const orderedIds = [
+      ...Object.keys(outputs).filter((id) => preferred.has(String(id))),
+      ...Object.keys(outputs).filter((id) => !preferred.has(String(id))),
+    ];
+    for (const id of orderedIds) {
+      const images = outputs[id]?.images || [];
+      for (const image of images) {
+        const filename = image?.filename || "";
+        if (!filename) continue;
+        const haystack = `${filename} ${image?.subfolder || ""} ${id}`.toLowerCase();
+        if (preferred.has(String(id)) || haystack.includes("tail") || haystack.includes("last")) {
+          return {
+            imageFile: filename,
+            imageType: image?.type || "output",
+            subfolder: image?.subfolder || "",
+            guideStrength: 1.0,
+          };
+        }
+      }
+    }
+    return null;
+  }
+
   updateLongAutoUI() {
     if (!this.queueAllCutsBtn) return;
     const isLongAuto = !!(this.timeline.meta && this.timeline.meta.longAuto);
     this.queueAllCutsBtn.style.display = isLongAuto ? "" : "none";
     if (this._isQueueingAllCuts) {
       this.queueAllCutsBtn.disabled = true;
-      this.queueAllCutsBtn.innerHTML = `${ICONS.pause} Queueing Cuts...`;
+      this.queueAllCutsBtn.innerHTML = `${ICONS.pause} Rendering Cuts...`;
     } else {
       this.queueAllCutsBtn.disabled = false;
       this.queueAllCutsBtn.innerHTML = `${ICONS.play} Queue All Cuts`;
@@ -1112,22 +1204,34 @@ class TimelineEditor {
     if (!plan.length) return;
 
     if (!this.timeline.meta) this.timeline.meta = {};
-    const prevIndex = this.timeline.meta.activeSegmentIndex || 0;
+    const originalMeta = { ...this.timeline.meta };
+    let previousTailFrame = originalMeta.previousTailFrame || null;
     this._isQueueingAllCuts = true;
     this.updateLongAutoUI();
 
     try {
       for (const seg of plan) {
         this.timeline.meta.activeSegmentIndex = seg.index;
+        if (seg.index > 0 && previousTailFrame) {
+          this.timeline.meta.previousTailFrame = previousTailFrame;
+        } else {
+          delete this.timeline.meta.previousTailFrame;
+        }
         this.commitChanges(true);
         await new Promise((resolve) => setTimeout(resolve, 0));
-        await this.queueCurrentGraphPrompt();
+        const promptId = await this.queueCurrentGraphPrompt();
+        const history = await this.waitForPromptHistory(promptId);
+        const tailFrame = this.extractTailFrameFromHistory(history);
+        if (!tailFrame && seg.index < plan.length - 1) {
+          throw new Error(`Segment ${seg.index} finished without a tail-frame PNG; stopped before queuing the next segment.`);
+        }
+        if (tailFrame) previousTailFrame = tailFrame;
       }
     } catch (err) {
       console.error("[Shezw LongAuto] Failed to queue all cuts", err);
       throw err;
     } finally {
-      this.timeline.meta.activeSegmentIndex = prevIndex;
+      this.timeline.meta = originalMeta;
       this._isQueueingAllCuts = false;
       this.commitChanges();
       this.updateLongAutoUI();
@@ -1277,7 +1381,7 @@ class TimelineEditor {
     this.queueAllCutsBtn = document.createElement("button");
     this.queueAllCutsBtn.className = "pr-btn";
     this.queueAllCutsBtn.innerHTML = `${ICONS.play} Queue All Cuts`;
-    this.queueAllCutsBtn.title = "Queue every planned long-auto cut as an individual render";
+    this.queueAllCutsBtn.title = "Render every planned long-auto cut sequentially and feed each tail frame into the next segment";
     this.queueAllCutsBtn.style.display = "none";
     this.queueAllCutsBtn.addEventListener("click", () => this.queueAllCutSegments());
 
