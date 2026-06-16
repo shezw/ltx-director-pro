@@ -130,6 +130,24 @@ def _camera_boundary_frames(timeline: dict[str, Any], duration: int) -> dict[int
     return boundaries
 
 
+def _near_manual_cut(frame: int, manual_frames: set[int], tolerance_frames: int) -> bool:
+    return any(abs(frame - cut_frame) <= tolerance_frames for cut_frame in manual_frames)
+
+
+def _filter_near_manual(
+    boundaries: dict[int, set[str]],
+    manual_frames: set[int],
+    tolerance_frames: int,
+) -> dict[int, set[str]]:
+    if not manual_frames or tolerance_frames <= 0:
+        return boundaries
+    return {
+        frame: reasons
+        for frame, reasons in boundaries.items()
+        if not _near_manual_cut(frame, manual_frames, tolerance_frames)
+    }
+
+
 def _soft_boundary_frames(timeline: dict[str, Any], duration: int) -> dict[int, set[str]]:
     boundaries: dict[int, set[str]] = {}
     for key, reason_start, reason_end in (
@@ -182,6 +200,7 @@ def plan_segments(
     workflow: dict[str, Any],
     max_segment_seconds: float = 15.0,
     keyframe_tolerance_seconds: float = 0.25,
+    manual_cut_tolerance_seconds: float = 0.25,
     min_segment_seconds: float = 1.0,
 ) -> dict[str, Any]:
     node = _director_node(workflow)
@@ -190,11 +209,13 @@ def plan_segments(
     duration = _duration_frames(node)
     max_frames = max(1, int(math.floor(max_segment_seconds * fps)))
     tolerance_frames = max(0, int(round(keyframe_tolerance_seconds * fps)))
+    manual_tolerance_frames = max(0, int(round(manual_cut_tolerance_seconds * fps)))
     min_frames = max(1, int(round(min_segment_seconds * fps)))
 
     hard = _manual_cut_frames(timeline, duration)
-    _merge_reasons(hard, _camera_boundary_frames(timeline, duration))
-    soft = _soft_boundary_frames(timeline, duration)
+    manual_frames = set(hard)
+    _merge_reasons(hard, _filter_near_manual(_camera_boundary_frames(timeline, duration), manual_frames, manual_tolerance_frames))
+    soft = _filter_near_manual(_soft_boundary_frames(timeline, duration), manual_frames, manual_tolerance_frames)
 
     hard_points = [0, *sorted(hard), duration]
     cuts: list[tuple[int, set[str]]] = [(0, {"timeline_start"})]
@@ -203,6 +224,8 @@ def plan_segments(
       cursor = left
       while right - cursor > max_frames:
           limit = cursor + max_frames
+          if _near_manual_cut(right, manual_frames, manual_tolerance_frames) and right - limit <= manual_tolerance_frames:
+              break
           soft_cut, soft_reasons = _choose_soft_cut(cursor, limit, soft, min_frames)
           if soft_cut is not None:
               cuts.append((soft_cut, set(soft_reasons) | {"max_length_soft_boundary"}))
@@ -257,6 +280,8 @@ def plan_segments(
         "max_segment_frames": max_frames,
         "keyframe_tolerance_seconds": keyframe_tolerance_seconds,
         "keyframe_tolerance_frames": tolerance_frames,
+        "manual_cut_tolerance_seconds": manual_cut_tolerance_seconds,
+        "manual_cut_tolerance_frames": manual_tolerance_frames,
         "segments": segments,
     }
 
@@ -469,6 +494,7 @@ def main() -> int:
     parser.add_argument("workflow", type=Path, help="ComfyUI workflow JSON with an LTXDirector node.")
     parser.add_argument("--max-segment-seconds", type=float, default=15.0)
     parser.add_argument("--keyframe-tolerance-seconds", type=float, default=0.25)
+    parser.add_argument("--manual-cut-tolerance-seconds", type=float, default=0.25)
     parser.add_argument("--min-segment-seconds", type=float, default=1.0)
     parser.add_argument("--output-dir", type=Path, default=None, help="Directory for manifest and per-segment workflows.")
     parser.add_argument("--plan-only", action="store_true", help="Only print/write the manifest; do not materialize segment workflows.")
@@ -479,6 +505,7 @@ def main() -> int:
         workflow,
         max_segment_seconds=args.max_segment_seconds,
         keyframe_tolerance_seconds=args.keyframe_tolerance_seconds,
+        manual_cut_tolerance_seconds=args.manual_cut_tolerance_seconds,
         min_segment_seconds=args.min_segment_seconds,
     )
     _print_plan(manifest)
