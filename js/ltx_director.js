@@ -1078,12 +1078,13 @@ class TimelineEditor {
   }
 
   async queueCurrentGraphPrompt() {
-    if (typeof app?.queuePrompt === "function") {
+    const queueFn = app?.__shezwOriginalQueuePrompt || app?.queuePrompt;
+    if (typeof queueFn === "function") {
       try {
-        return await app.queuePrompt(0, 1);
+        return await queueFn.call(app, 0, 1);
       } catch (err) {
         try {
-          return await app.queuePrompt(0);
+          return await queueFn.call(app, 0);
         } catch (_err) {
           throw err;
         }
@@ -4959,6 +4960,26 @@ class TimelineEditor {
   }
 }
 
+function installLongAutoQueueHook() {
+  if (!app || typeof app.queuePrompt !== "function" || app.__shezwLongAutoQueueHookInstalled) return;
+  app.__shezwLongAutoQueueHookInstalled = true;
+  app.__shezwOriginalQueuePrompt = app.queuePrompt.bind(app);
+
+  app.queuePrompt = async function (...args) {
+    const nodes = app.graph?._nodes || [];
+    const longAutoNode = nodes.find((node) => {
+      const editor = node?._timelineEditor;
+      return !!(editor && editor.timeline?.meta?.longAuto && editor.timeline?.meta?.queueAllByDefault);
+    });
+
+    if (longAutoNode?._timelineEditor && !longAutoNode._timelineEditor._isQueueingAllCuts) {
+      return await longAutoNode._timelineEditor.queueAllCutSegments();
+    }
+
+    return await app.__shezwOriginalQueuePrompt(...args);
+  };
+}
+
 // --- Node Registration Hooks ---
 const APPENDED_WIDGET_DEFAULTS = [
   ["timeline_data", "{}"],
@@ -4969,6 +4990,7 @@ const APPENDED_WIDGET_DEFAULTS = [
 app.registerExtension({
   name: "LTXDirector",
   async beforeRegisterNodeDef(nodeType, nodeData, app) {
+    installLongAutoQueueHook();
     if (nodeData.name === "LTXDirector") {
 
       const onNodeCreated = nodeType.prototype.onNodeCreated;
