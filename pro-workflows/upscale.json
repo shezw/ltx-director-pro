@@ -1,8 +1,8 @@
 {
   "id": "cfy-shezw-video-upscale-720p-to-1080p",
   "revision": 0,
-  "last_node_id": 7,
-  "last_link_id": 7,
+  "last_node_id": 9,
+  "last_link_id": 9,
   "nodes": [
     {
       "id": 1,
@@ -208,7 +208,8 @@
         "models": [
           {
             "directory": "upscale_models",
-            "name": "RealESRGAN_x2plus.pth"
+            "name": "RealESRGAN_x2plus.pth",
+            "url": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.1/RealESRGAN_x2plus.pth"
           }
         ]
       },
@@ -285,7 +286,8 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            4
+            4,
+            8
           ]
         }
       ],
@@ -393,6 +395,160 @@
           }
         }
       }
+    },
+    {
+      "id": 8,
+      "type": "GetImageRangeFromBatch",
+      "pos": [
+        660,
+        140
+      ],
+      "size": [
+        260,
+        110
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "start_index",
+          "name": "start_index",
+          "type": "INT",
+          "widget": {
+            "name": "start_index"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "num_frames",
+          "name": "num_frames",
+          "type": "INT",
+          "widget": {
+            "name": "num_frames"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "images",
+          "name": "images",
+          "type": "IMAGE",
+          "link": 8
+        },
+        {
+          "localized_name": "masks",
+          "name": "masks",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "IMAGE",
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            9
+          ]
+        },
+        {
+          "localized_name": "MASK",
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-kjnodes",
+        "ver": "1.0.0",
+        "Node name for S&R": "GetImageRangeFromBatch"
+      },
+      "widgets_values": [
+        -1,
+        1
+      ],
+      "color": "#222",
+      "bgcolor": "#000",
+      "title": "GET LAST FRAME AS PNG SOURCE"
+    },
+    {
+      "id": 9,
+      "type": "SaveImageKJ",
+      "pos": [
+        940,
+        140
+      ],
+      "size": [
+        350,
+        120
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "images",
+          "name": "images",
+          "type": "IMAGE",
+          "link": 9
+        },
+        {
+          "localized_name": "filename_prefix",
+          "name": "filename_prefix",
+          "type": "STRING",
+          "widget": {
+            "name": "filename_prefix"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "output_folder",
+          "name": "output_folder",
+          "type": "STRING",
+          "widget": {
+            "name": "output_folder"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "caption_file_extension",
+          "name": "caption_file_extension",
+          "type": "STRING",
+          "widget": {
+            "name": "caption_file_extension"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "caption",
+          "name": "caption",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "filename",
+          "name": "filename",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-kjnodes",
+        "ver": "1.0.0",
+        "Node name for S&R": "SaveImageKJ"
+      },
+      "widgets_values": [
+        "video/upscale-last-frame",
+        "output",
+        ""
+      ],
+      "color": "#222",
+      "bgcolor": "#000",
+      "title": "SAVE LAST FRAME PNG"
     }
   ],
   "links": [
@@ -451,6 +607,22 @@
       7,
       4,
       "FLOAT"
+    ],
+    [
+      8,
+      6,
+      0,
+      8,
+      2,
+      "IMAGE"
+    ],
+    [
+      9,
+      8,
+      0,
+      9,
+      0,
+      "IMAGE"
     ]
   ],
   "groups": [],
