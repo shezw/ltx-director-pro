@@ -67,6 +67,7 @@ long-auto-renders/test-001/
 - 外层 long-auto runner 读取完整 30s/60s Director 时间线。
 - 按手动切点、camera 边界和最长 15s 限制自动切段。
 - 手动切点默认有 0.25s 保护区，保护区内的 camera / local prompt / keyframe 自动切点会被忽略，避免出现很碎的相邻切段。
+- 时间轴交互也会在 0.25s 内吸附到 CUT 线，方便把 keyframe、local prompt、camera/control 段边界对齐到同一切点。
 - 每段用 `long-auto.json` 生成一个短视频和一张 tail-frame PNG。
 - 如果下一段起点 0.25s 容差内有 keyframe，用 keyframe；否则使用上一段 tail-frame 作为首帧。
 - 最终把所有 segment video concat，并按需要 mux 回完整原始音频。

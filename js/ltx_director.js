@@ -1606,7 +1606,8 @@ class TimelineEditor {
         const newLength = Math.max(1, frameRate * 1);
 
         let mouseFrameX = x * (totalFrames / logicalWidth);
-        let startFrame = clamp(Math.round(mouseFrameX - newLength / 2), 0, totalFrames - newLength);
+        let startFrame = this.snapFrameToCut(Math.round(mouseFrameX - newLength / 2), { totalFrames });
+        startFrame = clamp(startFrame, 0, totalFrames - newLength);
 
         this._ghostInitialTimeline.push({
           id: this._ghostSegmentId,
@@ -1618,7 +1619,7 @@ class TimelineEditor {
 
       let mouseFrameX = x * (totalFrames / logicalWidth);
       const ghost = this._ghostInitialTimeline.find(s => s.id === this._ghostSegmentId);
-      let D_mouse_start = mouseFrameX - ghost.length / 2;
+      let D_mouse_start = this.snapFrameToCut(mouseFrameX - ghost.length / 2, { totalFrames });
 
       this._previewSegments = this._applyCenterDragPhysics(
         this._ghostInitialTimeline,
@@ -1989,6 +1990,8 @@ class TimelineEditor {
                 if (newStart + newLength <= seg.start) break;
                 newStart = Math.max(newStart, seg.start + seg.length);
               }
+            } else {
+              newStart = this.snapFrameToCut(newStart, { totalFrames: this.getVisualDurationFrames() });
             }
 
             // Use the visual timeline as the physics bound so segments can
@@ -2203,6 +2206,8 @@ class TimelineEditor {
               if (newStart + newLength <= seg.start) break;
               newStart = Math.max(newStart, seg.start + seg.length);
             }
+          } else {
+            newStart = this.snapFrameToCut(newStart, { totalFrames: this.getVisualDurationFrames() });
           }
 
           // Use the visual timeline as the physics bound so segments can
@@ -3264,6 +3269,31 @@ class TimelineEditor {
     return best;
   }
 
+  getCutSnapToleranceFrames() {
+    const seconds = Number(this.timeline?.meta?.manualCutToleranceSeconds ?? 0.25);
+    return Math.max(0, Math.round((Number.isFinite(seconds) ? seconds : 0.25) * this.getFrameRate()));
+  }
+
+  snapFrameToCut(frame, opts = {}) {
+    const totalFrames = opts.totalFrames ?? this.getVisualDurationFrames();
+    const toleranceFrames = opts.toleranceFrames ?? this.getCutSnapToleranceFrames();
+    if (!toleranceFrames || !(this.timeline.cutSegments || []).length) {
+      return clamp(frame, 0, totalFrames);
+    }
+
+    let bestFrame = null;
+    let bestDistance = Infinity;
+    for (const cut of this.timeline.cutSegments || []) {
+      const cutFrame = clamp(Math.round(cut.start ?? cut.frame ?? 0), 0, totalFrames);
+      const distance = Math.abs(frame - cutFrame);
+      if (distance <= toleranceFrames && distance < bestDistance) {
+        bestFrame = cutFrame;
+        bestDistance = distance;
+      }
+    }
+    return bestFrame === null ? clamp(frame, 0, totalFrames) : bestFrame;
+  }
+
   getHitTest(mouseX, mouseY) {
     const width = this.canvas.offsetWidth;
     const totalFrames = this.getVisualDurationFrames();
@@ -3423,7 +3453,7 @@ class TimelineEditor {
       const logicalWidth = this.canvas.offsetWidth;
       const totalFrames = this.getVisualDurationFrames();
       let mouseFrameX = x * (totalFrames / logicalWidth);
-      this.currentFrame = clamp(mouseFrameX, 0, totalFrames);
+      this.currentFrame = this.snapFrameToCut(mouseFrameX, { totalFrames });
       this.render();
       if (this.isPlaying) {
         this.playAudio();
@@ -3569,7 +3599,7 @@ class TimelineEditor {
       const logicalWidth = this.canvas.offsetWidth;
       const totalFrames = this.getVisualDurationFrames();
       let mouseFrameX = mouseX * (totalFrames / logicalWidth);
-      this.currentFrame = clamp(mouseFrameX, 0, totalFrames);
+      this.currentFrame = this.snapFrameToCut(mouseFrameX, { totalFrames });
       this.render();
       if (this.isPlaying) {
         this.playAudio(); // Scrub (restart from new position)
@@ -3609,7 +3639,9 @@ class TimelineEditor {
           maxDeltaRight = Math.min(maxDeltaRight, availLeftTail);
         }
 
-        let safeDelta = clamp(dragDelta, -maxDeltaLeft, maxDeltaRight);
+        const originalJointFrame = origLeft.start + origLeft.length;
+        const snappedJointFrame = this.snapFrameToCut(originalJointFrame + dragDelta, { totalFrames });
+        let safeDelta = clamp(snappedJointFrame - originalJointFrame, -maxDeltaLeft, maxDeltaRight);
 
         t[leftIdx].length = origLeft.length + safeDelta;
         t[rightIdx].start = origRight.start + safeDelta;
@@ -3626,7 +3658,8 @@ class TimelineEditor {
       if (targetIdx < 0) return;
 
       if (this._dragType === "right") {
-        let newLen = t[targetIdx].length + dragDelta;
+        const snappedEnd = this.snapFrameToCut(t[targetIdx].start + t[targetIdx].length + dragDelta, { totalFrames });
+        let newLen = snappedEnd - t[targetIdx].start;
         let maxPossibleLength = totalFrames - t[targetIdx].start;
         let nextSeg = t.find(s => s.start >= t[targetIdx].start + t[targetIdx].length && s.id !== t[targetIdx].id);
         if (nextSeg) {
@@ -3640,7 +3673,7 @@ class TimelineEditor {
         t[targetIdx].length = Math.max(MIN_SEGMENT_LENGTH, Math.min(newLen, maxPossibleLength));
 
       } else if (this._dragType === "left") {
-        let newStart = t[targetIdx].start + dragDelta;
+        let newStart = this.snapFrameToCut(t[targetIdx].start + dragDelta, { totalFrames });
         let minPossibleStart = 0;
         let prevSeg = t.slice().reverse().find(s => s.start + s.length <= t[targetIdx].start && s.id !== t[targetIdx].id);
         if (prevSeg) {
@@ -3667,7 +3700,7 @@ class TimelineEditor {
         if (dIdx < 0) return;
         let D = JSON.parse(JSON.stringify(initT[dIdx]));
 
-        let D_mouse_start = D.start + dragDelta;
+        let D_mouse_start = this.snapFrameToCut(D.start + dragDelta, { totalFrames });
         let mouseFrameX = mouseX * (totalFrames / logicalWidth);
 
         t = this._applyCenterDragPhysics(initT, D.id, D_mouse_start, mouseFrameX, durationFrames, totalFrames, logicalWidth);
@@ -3685,6 +3718,7 @@ class TimelineEditor {
     if (dIdx < 0) return t_copy;
 
     let D = t_copy[dIdx];
+    D_mouse_start = this.snapFrameToCut(D_mouse_start, { totalFrames });
     let D_clamped_start = clamp(D_mouse_start, 0, durationFrames - D.length);
 
     let baseSegments = t_copy.filter(s => s.id !== D.id);
@@ -4222,7 +4256,7 @@ class TimelineEditor {
 
     const currentTrack = gap.track === "audio" ? "audio" : (gap.track === "control" ? "control" : (gap.track === "camera" ? "camera" : (gap.track === "prompt" ? "prompt" : "image")));
 
-    const clickedFrame = Math.max(0, Math.round(gap.clickedFrame !== undefined ? gap.clickedFrame : gap.frameStart));
+    const clickedFrame = Math.max(0, Math.round(this.snapFrameToCut(gap.clickedFrame !== undefined ? gap.clickedFrame : gap.frameStart)));
     const cutBtn = document.createElement("button");
     cutBtn.className = "pr-gap-menu-btn";
     cutBtn.innerHTML = `${ICONS.cut} Manual Cut`;
@@ -4237,7 +4271,11 @@ class TimelineEditor {
       pasteBtn.className = "pr-gap-menu-btn";
       pasteBtn.innerHTML = `Paste Segment`;
       pasteBtn.onclick = () => {
-        const startFrame = Math.round(gap.clickedFrame !== undefined ? gap.clickedFrame : gap.frameStart);
+        const startFrame = clamp(
+          Math.round(this.snapFrameToCut(gap.clickedFrame !== undefined ? gap.clickedFrame : gap.frameStart)),
+          gap.frameStart,
+          Math.max(gap.frameStart, gap.frameEnd - 1)
+        );
         const gapLength = gap.frameEnd - startFrame;
 
         const newSeg = {
@@ -4344,7 +4382,12 @@ class TimelineEditor {
       pasteBtn.className = "pr-gap-menu-btn";
       pasteBtn.innerHTML = `Paste Segment`;
       pasteBtn.onclick = () => {
-        const gapLength = gap.frameEnd - gap.frameStart;
+        const startFrame = clamp(
+          Math.round(this.snapFrameToCut(gap.frameStart)),
+          gap.frameStart,
+          Math.max(gap.frameStart, gap.frameEnd - 1)
+        );
+        const gapLength = gap.frameEnd - startFrame;
 
         let finalLength = Math.min(this._copiedSegment.length, gapLength);
         if (currentTrack === "image") {
@@ -4354,7 +4397,7 @@ class TimelineEditor {
         const newSeg = {
           ...this._copiedSegment,
           id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-          start: gap.frameStart,
+          start: startFrame,
           length: finalLength
         };
         const targetArray = this.getTrackArray(currentTrack);
@@ -4768,9 +4811,10 @@ class TimelineEditor {
 
 
   addSegmentInGap(frameStart, frameEnd, type = "prompt") {
+    const snappedStart = clamp(Math.round(this.snapFrameToCut(frameStart)), 0, Math.max(0, frameEnd - 1));
     const seg = {
       id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-      start: frameStart, length: frameEnd - frameStart,
+      start: snappedStart, length: Math.max(1, frameEnd - snappedStart),
       prompt: "", type,
     };
     const track = type === "control" ? "control" : (type === "camera" ? "camera" : (type === "prompt" ? "prompt" : "image"));
@@ -4870,10 +4914,10 @@ class TimelineEditor {
 
   addCutAtFrame(frame) {
     const totalFrames = this.getVisualDurationFrames();
-    const cutFrame = clamp(Math.round(frame || 0), 0, Math.max(0, totalFrames - 1));
+    const cutFrame = clamp(Math.round(this.snapFrameToCut(frame || 0, { totalFrames })), 0, Math.max(0, totalFrames - 1));
     if (!this.timeline.cutSegments) this.timeline.cutSegments = [];
 
-    const existingIdx = this.timeline.cutSegments.findIndex(seg => Math.abs((seg.start ?? seg.frame ?? 0) - cutFrame) <= 1);
+    const existingIdx = this.timeline.cutSegments.findIndex(seg => Math.abs((seg.start ?? seg.frame ?? 0) - cutFrame) <= this.getCutSnapToleranceFrames());
     if (existingIdx >= 0) {
       this.selectionType = "cut";
       this.selectedIndex = existingIdx;
