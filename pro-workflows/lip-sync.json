@@ -1036,6 +1036,14 @@
             "target_id": 342,
             "target_slot": 1,
             "type": "IMAGE"
+          },
+          {
+            "id": 749,
+            "origin_id": 316,
+            "origin_slot": 0,
+            "target_id": -20,
+            "target_slot": 1,
+            "type": "IMAGE"
           }
         ],
         "name": "Video Generation (LTX-2.3)",
@@ -2216,7 +2224,8 @@
             "outputs": [
               {
                 "links": [
-                  695
+                  695,
+                  749
                 ],
                 "localized_name": "IMAGE",
                 "name": "IMAGE",
@@ -3701,6 +3710,11 @@
                   "directory": "text_encoders",
                   "name": "gemma_3_12B_it_fp4_mixed.safetensors",
                   "url": "https://huggingface.co/Comfy-Org/ltx-2/resolve/main/split_files/text_encoders/gemma_3_12B_it_fp4_mixed.safetensors"
+                },
+                {
+                  "directory": "text_encoders",
+                  "name": "ltx-2.3_text_projection_bf16.safetensors",
+                  "url": "https://huggingface.co/Kijai/LTX2.3_comfy/resolve/main/text_encoders/ltx-2.3_text_projection_bf16.safetensors"
                 }
               ],
               "secondTabOffset": 80,
@@ -4035,7 +4049,7 @@
             6386,
             4833.2,
             144,
-            72
+            80
           ],
           "id": -20
         },
@@ -4052,12 +4066,26 @@
               4046
             ],
             "type": "VIDEO"
+          },
+          {
+            "id": "8c97ad4d-a26b-4711-acb3-85aacc98738c",
+            "name": "IMAGE",
+            "type": "IMAGE",
+            "linkIds": [
+              749
+            ],
+            "localized_name": "IMAGE",
+            "label": "last_frame_source_images",
+            "pos": [
+              5340,
+              4066
+            ]
           }
         ],
         "revision": 0,
         "state": {
           "lastGroupId": 26,
-          "lastLinkId": 748,
+          "lastLinkId": 749,
           "lastNodeId": 344,
           "lastRerouteId": 0
         },
@@ -4475,8 +4503,8 @@
   },
   "groups": [],
   "id": "07824bbb-6672-4bb0-ac36-4313a519e35b",
-  "last_link_id": 750,
-  "last_node_id": 345,
+  "last_link_id": 752,
+  "last_node_id": 347,
   "links": [
     [
       726,
@@ -4517,6 +4545,22 @@
       340,
       7,
       "FLOAT"
+    ],
+    [
+      751,
+      340,
+      1,
+      346,
+      2,
+      "IMAGE"
+    ],
+    [
+      752,
+      346,
+      0,
+      347,
+      0,
+      "IMAGE"
     ]
   ],
   "nodes": [
@@ -4809,6 +4853,14 @@
           ],
           "name": "VIDEO",
           "type": "VIDEO"
+        },
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            751
+          ],
+          "localized_name": "IMAGE"
         }
       ],
       "pos": [
@@ -4929,6 +4981,160 @@
         "cnr_id": "zhihui_nodes_comfyui"
       },
       "widgets_values": []
+    },
+    {
+      "id": 346,
+      "type": "GetImageRangeFromBatch",
+      "pos": [
+        261.9999655648312,
+        4237.999763617263
+      ],
+      "size": [
+        260,
+        110
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "start_index",
+          "name": "start_index",
+          "type": "INT",
+          "widget": {
+            "name": "start_index"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "num_frames",
+          "name": "num_frames",
+          "type": "INT",
+          "widget": {
+            "name": "num_frames"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "images",
+          "name": "images",
+          "type": "IMAGE",
+          "link": 751
+        },
+        {
+          "localized_name": "masks",
+          "name": "masks",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "IMAGE",
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            752
+          ]
+        },
+        {
+          "localized_name": "MASK",
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-kjnodes",
+        "ver": "1.0.0",
+        "Node name for S&R": "GetImageRangeFromBatch"
+      },
+      "widgets_values": [
+        -1,
+        1
+      ],
+      "color": "#222",
+      "bgcolor": "#000",
+      "title": "GET LAST FRAME AS PNG SOURCE"
+    },
+    {
+      "id": 347,
+      "type": "SaveImageKJ",
+      "pos": [
+        541.9999655648312,
+        4237.999763617263
+      ],
+      "size": [
+        350,
+        120
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "images",
+          "name": "images",
+          "type": "IMAGE",
+          "link": 752
+        },
+        {
+          "localized_name": "filename_prefix",
+          "name": "filename_prefix",
+          "type": "STRING",
+          "widget": {
+            "name": "filename_prefix"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "output_folder",
+          "name": "output_folder",
+          "type": "STRING",
+          "widget": {
+            "name": "output_folder"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "caption_file_extension",
+          "name": "caption_file_extension",
+          "type": "STRING",
+          "widget": {
+            "name": "caption_file_extension"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "caption",
+          "name": "caption",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "filename",
+          "name": "filename",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-kjnodes",
+        "ver": "1.0.0",
+        "Node name for S&R": "SaveImageKJ"
+      },
+      "widgets_values": [
+        "video/lip-sync-last-frame",
+        "output",
+        ""
+      ],
+      "color": "#222",
+      "bgcolor": "#000",
+      "title": "SAVE LAST FRAME PNG"
     }
   ],
   "revision": 0,

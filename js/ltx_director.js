@@ -640,6 +640,7 @@ const ICONS = {
   audio: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>`,
   camera: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"></path><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>`,
   control: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7"></path><path d="M4 10V3"></path><path d="M12 21v-9"></path><path d="M12 8V3"></path><path d="M20 21v-5"></path><path d="M20 12V3"></path><path d="M2 14h4"></path><path d="M10 8h4"></path><path d="M18 16h4"></path></svg>`,
+  cut: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="3" x2="12" y2="21"></line><path d="M6 7l6-4 6 4"></path><path d="M6 17l6 4 6-4"></path></svg>`,
   trash: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`,
   text: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"></polyline><line x1="9" y1="20" x2="15" y2="20"></line><line x1="12" y1="4" x2="12" y2="20"></line></svg>`,
   play: `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`,
@@ -654,7 +655,7 @@ const ICONS = {
 
 // --- Data Models ---
 function parseInitial(jsonStr) {
-  let parsed = { segments: [], promptSegments: [], referenceImages: [], cameraSegments: [], controlSegments: [], audioSegments: [] };
+  let parsed = { segments: [], promptSegments: [], referenceImages: [], cameraSegments: [], controlSegments: [], audioSegments: [], cutSegments: [], meta: {} };
   try {
     if (jsonStr) {
       const p = JSON.parse(jsonStr);
@@ -664,6 +665,8 @@ function parseInitial(jsonStr) {
       if (Array.isArray(p.cameraSegments)) parsed.cameraSegments = p.cameraSegments;
       if (Array.isArray(p.controlSegments)) parsed.controlSegments = p.controlSegments;
       if (Array.isArray(p.audioSegments)) parsed.audioSegments = p.audioSegments;
+      if (Array.isArray(p.cutSegments)) parsed.cutSegments = p.cutSegments;
+      if (p.meta && typeof p.meta === "object" && !Array.isArray(p.meta)) parsed.meta = p.meta;
     }
   } catch (e) { }
 
@@ -747,6 +750,17 @@ function parseInitial(jsonStr) {
     if (seg.note === undefined) seg.note = "";
   });
 
+  for (let seg of parsed.cutSegments) {
+    if (!seg.id) {
+      seg.id = Date.now().toString() + Math.random().toString(36).substr(2, 5);
+    }
+    seg.type = "cut";
+    if (seg.start === undefined) seg.start = seg.frame !== undefined ? seg.frame : 0;
+    seg.start = Math.max(0, Math.round(seg.start || 0));
+    seg.frame = seg.start;
+    if (seg.label === undefined) seg.label = "CUT";
+  }
+
   return parsed;
 }
 
@@ -765,8 +779,8 @@ class TimelineEditor {
     this.canvasHeight = CANVAS_HEIGHT;
 
     // Core data
-    this.timeline = { segments: [], promptSegments: [], referenceImages: [], cameraSegments: [], controlSegments: [], audioSegments: [] };
-    this.selectionType = "image"; // "image", "prompt", "reference", "camera", "control", or "audio"
+    this.timeline = { segments: [], promptSegments: [], referenceImages: [], cameraSegments: [], controlSegments: [], audioSegments: [], cutSegments: [], meta: {} };
+    this.selectionType = "image"; // "image", "prompt", "reference", "camera", "control", "audio", or "cut"
     this.selectedIndex = -1;
 
     // Interactions
@@ -930,6 +944,7 @@ class TimelineEditor {
   }
 
   getTrackArray(track) {
+    if (track === "cut") return this.timeline.cutSegments || [];
     if (track === "audio") return this.timeline.audioSegments;
     if (track === "control") return this.timeline.controlSegments;
     if (track === "camera") return this.timeline.cameraSegments;
@@ -938,7 +953,8 @@ class TimelineEditor {
   }
 
   setTrackArray(track, arr) {
-    if (track === "audio") this.timeline.audioSegments = arr;
+    if (track === "cut") this.timeline.cutSegments = arr;
+    else if (track === "audio") this.timeline.audioSegments = arr;
     else if (track === "control") this.timeline.controlSegments = arr;
     else if (track === "camera") this.timeline.cameraSegments = arr;
     else if (track === "prompt") this.timeline.promptSegments = arr;
@@ -998,9 +1014,66 @@ class TimelineEditor {
     for (const seg of this.timeline.controlSegments) {
       furthest = Math.max(furthest, seg.start + seg.length);
     }
+    for (const seg of this.timeline.cutSegments || []) {
+      furthest = Math.max(furthest, (seg.start ?? seg.frame ?? 0) + 1);
+    }
     const outputDuration = this.getDurationFrames();
     if (furthest <= 0) return outputDuration;
     return Math.max(outputDuration, Math.ceil(furthest * 1.30));
+  }
+
+  getLongAutoPlan() {
+    const durationFrames = this.getDurationFrames();
+    const frameRate = this.getFrameRate();
+    const maxFrames = Math.max(1, Math.floor(((this.timeline.meta && this.timeline.meta.maxSegmentSeconds) || 15) * frameRate));
+    const hard = new Map();
+    const addBoundary = (frame, reason) => {
+      const f = clamp(Math.round(frame || 0), 0, durationFrames);
+      if (f <= 0 || f >= durationFrames) return;
+      if (!hard.has(f)) hard.set(f, new Set());
+      hard.get(f).add(reason);
+    };
+    for (const cut of this.timeline.cutSegments || []) {
+      addBoundary(cut.start ?? cut.frame ?? 0, "manual_cut");
+    }
+    for (const cam of this.timeline.cameraSegments || []) {
+      addBoundary(cam.start || 0, "camera_start");
+      addBoundary((cam.start || 0) + (cam.length || 0), "camera_end");
+    }
+
+    const hardPoints = [0, ...[...hard.keys()].sort((a, b) => a - b), durationFrames];
+    const cuts = new Map([[0, new Set(["timeline_start"])]]);
+    const addCut = (frame, reasons) => {
+      if (!cuts.has(frame)) cuts.set(frame, new Set());
+      for (const r of reasons) cuts.get(frame).add(r);
+    };
+
+    for (let i = 0; i < hardPoints.length - 1; i++) {
+      let cursor = hardPoints[i];
+      const right = hardPoints[i + 1];
+      while (right - cursor > maxFrames) {
+        cursor += maxFrames;
+        addCut(cursor, ["max_length"]);
+      }
+      if (right !== durationFrames) addCut(right, hard.get(right) || new Set(["hard_boundary"]));
+    }
+    addCut(durationFrames, ["timeline_end"]);
+
+    const ordered = [...cuts.keys()].sort((a, b) => a - b);
+    const plan = [];
+    for (let i = 0; i < ordered.length - 1; i++) {
+      const start = ordered[i];
+      const end = ordered[i + 1];
+      if (end <= start) continue;
+      plan.push({
+        index: plan.length,
+        start,
+        end,
+        length: end - start,
+        reasons: [...(cuts.get(start) || [])],
+      });
+    }
+    return plan;
   }
 
   // Sync the zoom slider's max attribute to the current getMaxZoom() value,
@@ -1143,6 +1216,12 @@ class TimelineEditor {
     addControlBtn.innerHTML = `${ICONS.control} Add IC-Control`;
     addControlBtn.addEventListener("click", () => this.addControlSegmentFreeSpace());
 
+    const addCutBtn = document.createElement("button");
+    addCutBtn.className = "pr-btn";
+    addCutBtn.innerHTML = `${ICONS.cut} Add Cut`;
+    addCutBtn.title = "Add a manual long-auto split point at the playhead";
+    addCutBtn.addEventListener("click", () => this.addCutAtFrame(this.currentFrame));
+
     const deleteBtn = document.createElement("button");
     deleteBtn.className = "pr-btn pr-btn-danger";
     deleteBtn.innerHTML = `${ICONS.trash} Delete`;
@@ -1156,6 +1235,7 @@ class TimelineEditor {
     actionGroup.appendChild(addTextBtn);
     actionGroup.appendChild(addCameraBtn);
     actionGroup.appendChild(addControlBtn);
+    actionGroup.appendChild(addCutBtn);
     actionGroup.appendChild(uploadAudioBtn);
     actionGroup.appendChild(deleteBtn);
     toolbar.appendChild(actionGroup);
@@ -2009,7 +2089,11 @@ class TimelineEditor {
   }
 
   deleteSelectedSegment() {
-    if (this.selectionType === "audio") {
+    if (this.selectionType === "cut") {
+      if ((this.timeline.cutSegments || []).length === 0 || this.selectedIndex === -1) return;
+      this.timeline.cutSegments.splice(this.selectedIndex, 1);
+      this.selectedIndex = Math.max(-1, Math.min(this.selectedIndex - 1, this.timeline.cutSegments.length - 1));
+    } else if (this.selectionType === "audio") {
       if (this.timeline.audioSegments.length === 0 || this.selectedIndex === -1) return;
       this.timeline.audioSegments.splice(this.selectedIndex, 1);
       this.selectedIndex = Math.max(-1, this.selectedIndex - 1);
@@ -2097,7 +2181,9 @@ class TimelineEditor {
   updateUIFromSelection() {
     let seg = null;
     if (this.selectedIndex >= 0) {
-      if (this.selectionType === "audio") {
+      if (this.selectionType === "cut") {
+        seg = (this.timeline.cutSegments || [])[this.selectedIndex] || null;
+      } else if (this.selectionType === "audio") {
         const origSeg = this.timeline.audioSegments[this.selectedIndex];
         if (origSeg) {
           const previewIsAudio = this._ghostTrack === 'audio' || (this._previewSegments && this._ghostTrack === null && this.selectionType === 'audio');
@@ -2137,7 +2223,18 @@ class TimelineEditor {
       }
     }
 
-    if (this.selectionType === "audio" && seg) {
+    if (this.selectionType === "cut" && seg) {
+      if (this.strengthLabel) this.strengthLabel.textContent = "Cut:";
+      this.audioInfoArea.style.display = "none";
+      if (this.cameraSelect) this.cameraSelect.style.display = "none";
+      this.promptInput.style.display = "block";
+      this.promptInput.placeholder = "Manual long-auto split point";
+      this.promptInput.value = seg.label || "CUT";
+      this.promptInput.disabled = true;
+      this.strengthRow.style.display = "flex";
+      this.strengthValue.value = "1.00";
+      this.strengthValue.disabled = true;
+    } else if (this.selectionType === "audio" && seg) {
       if (this.strengthLabel) this.strengthLabel.textContent = "Strength:";
       this.promptInput.style.display = "none";
       if (this.cameraSelect) this.cameraSelect.style.display = "none";
@@ -2225,6 +2322,8 @@ class TimelineEditor {
     if (this.segmentBoundsDisplay) {
       if (this.selectionType === "reference" && seg) {
         this.segmentBoundsDisplay.textContent = `Reference: ${seg.refName || "-"}`;
+      } else if (this.selectionType === "cut" && seg) {
+        this.segmentBoundsDisplay.textContent = `Cut: ${this.formatTime(seg.start ?? seg.frame ?? 0, true)}`;
       } else if (seg) {
         const startStr = this.formatTime(seg.start, true);
         const endStr = this.formatTime(seg.start + seg.length, true);
@@ -2295,6 +2394,7 @@ class TimelineEditor {
     const activeCameraSegId = this.selectionType === "camera" ? this.timeline.cameraSegments[this.selectedIndex]?.id : null;
     const activeControlSegId = this.selectionType === "control" ? this.timeline.controlSegments[this.selectedIndex]?.id : null;
     const activeAudioSegId = this.selectionType === "audio" ? this.timeline.audioSegments[this.selectedIndex]?.id : null;
+    const activeCutSegId = this.selectionType === "cut" ? this.timeline.cutSegments?.[this.selectedIndex]?.id : null;
 
     // Sort segments so that the selected one is drawn last (on top)
     const isImageSelection = this.selectionType === "image";
@@ -2659,6 +2759,8 @@ class TimelineEditor {
     this.ctx.fillRect(0, this.getTrackY("control"), width, 1);
     this.ctx.fillRect(0, this.getTrackY("audio"), width, 1);
 
+    this.drawCutMarkers(this.ctx, totalFrames, width, activeCutSegId);
+
     // Draw gap "+" buttons
     if (!this._isDragging) {
       const BTN_R = 12;
@@ -2933,8 +3035,65 @@ class TimelineEditor {
     ctx.restore();
   }
 
+  drawCutMarkers(ctx, totalFrames, width, activeCutSegId) {
+    const cuts = [...(this.timeline.cutSegments || [])].sort((a, b) => (a.start ?? a.frame ?? 0) - (b.start ?? b.frame ?? 0));
+    if (!cuts.length || totalFrames <= 0) return;
+    const yTop = RULER_HEIGHT;
+    const yBottom = this.canvasHeight;
+    for (const cut of cuts) {
+      const frame = clamp(Math.round(cut.start ?? cut.frame ?? 0), 0, totalFrames);
+      const x = (frame / totalFrames) * width;
+      const selected = cut.id === activeCutSegId;
+
+      ctx.save();
+      ctx.strokeStyle = selected ? "#ffef8a" : "rgba(255, 210, 75, 0.82)";
+      ctx.lineWidth = selected ? 2.5 : 1.5;
+      ctx.setLineDash(selected ? [] : [4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(x, yTop);
+      ctx.lineTo(x, yBottom);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = selected ? "#ffef8a" : "#d7a94f";
+      ctx.beginPath();
+      ctx.moveTo(x - 6, RULER_HEIGHT - 1);
+      ctx.lineTo(x + 6, RULER_HEIGHT - 1);
+      ctx.lineTo(x, RULER_HEIGHT + 8);
+      ctx.closePath();
+      ctx.fill();
+
+      if (selected || width > 500) {
+        ctx.font = "bold 10px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+        ctx.fillStyle = selected ? "#fff2a8" : "#d7a94f";
+        ctx.fillText(cut.label || "CUT", x, RULER_HEIGHT + 10);
+      }
+      ctx.restore();
+    }
+  }
+
 
   // --- Interaction Logic ---
+  hitCutMarker(mouseX, mouseY, tolerancePx = 7) {
+    if (mouseY < RULER_HEIGHT - 2 || mouseY > this.canvasHeight) return null;
+    const width = this.canvas.offsetWidth || this._lastWidth || 0;
+    const totalFrames = this.getVisualDurationFrames();
+    if (!width || totalFrames <= 0) return null;
+    let best = null;
+    for (let i = 0; i < (this.timeline.cutSegments || []).length; i++) {
+      const cut = this.timeline.cutSegments[i];
+      const frame = clamp(Math.round(cut.start ?? cut.frame ?? 0), 0, totalFrames);
+      const x = (frame / totalFrames) * width;
+      const dx = Math.abs(mouseX - x);
+      if (dx <= tolerancePx && (!best || dx < best.dx)) {
+        best = { type: "cut", index: i, track: "cut", dx };
+      }
+    }
+    return best;
+  }
+
   getHitTest(mouseX, mouseY) {
     const width = this.canvas.offsetWidth;
     const totalFrames = this.getVisualDurationFrames();
@@ -2950,6 +3109,9 @@ class TimelineEditor {
     }
 
     if (mouseY < RULER_HEIGHT || mouseY > this.canvasHeight) return null;
+
+    const cutHit = this.hitCutMarker(mouseX, mouseY);
+    if (cutHit) return cutHit;
 
     const trackType = this.getTrackTypeAtY(mouseY);
     if (!trackType) return null;
@@ -3099,6 +3261,14 @@ class TimelineEditor {
       return;
     }
 
+    if (hit.type === "cut") {
+      this.selectionType = "cut";
+      this.selectedIndex = hit.index;
+      this.updateUIFromSelection();
+      this.render();
+      return;
+    }
+
     this.selectionType = hit.track;
     const targetArray = this.getTrackArray(hit.track);
 
@@ -3166,6 +3336,8 @@ class TimelineEditor {
         this.canvas.style.cursor = "col-resize";
       } else if (hit?.type === "center") {
         this.canvas.style.cursor = "grab";
+      } else if (hit?.type === "cut") {
+        this.canvas.style.cursor = "pointer";
       } else if (hit?.type === "playhead") {
         this.canvas.style.cursor = "ew-resize";
       } else {
@@ -3449,6 +3621,7 @@ class TimelineEditor {
     let sortedPromptSegments = [...this.timeline.promptSegments].sort((a, b) => a.start - b.start);
     let sortedCameraSegments = [...this.timeline.cameraSegments].sort((a, b) => a.start - b.start);
     let sortedControlSegments = [...this.timeline.controlSegments].sort((a, b) => a.start - b.start);
+    let sortedCutSegments = [...(this.timeline.cutSegments || [])].sort((a, b) => (a.start ?? a.frame ?? 0) - (b.start ?? b.frame ?? 0));
     const durationFrames = this.getDurationFrames();
 
     const contiguousLengths = [];
@@ -3535,7 +3708,15 @@ class TimelineEditor {
         return { ...s, cameraMotion: motion, prompt: cameraPromptForMotion(motion) };
       }),
       controlSegments: (this.timeline.controlSegments || []).map(s => ({ ...s })),
-      audioSegments: (this.timeline.audioSegments || []).map(s => ({ ...s }))
+      audioSegments: (this.timeline.audioSegments || []).map(s => ({ ...s })),
+      cutSegments: sortedCutSegments.map(s => ({
+        id: s.id,
+        type: "cut",
+        start: Math.max(0, Math.round(s.start ?? s.frame ?? 0)),
+        frame: Math.max(0, Math.round(s.start ?? s.frame ?? 0)),
+        label: s.label || "CUT",
+      })),
+      meta: (this.timeline.meta && typeof this.timeline.meta === "object") ? { ...this.timeline.meta } : {}
     };
 
     const jsonStr = JSON.stringify(toSave);
@@ -3692,6 +3873,15 @@ class TimelineEditor {
     const totalFrames = this.getVisualDurationFrames();
     const cursor = mouseX * (totalFrames / logicalWidth);
 
+    const cutHit = this.hitCutMarker(mouseX, mouseY);
+    if (cutHit) {
+      const cutSeg = (this.timeline.cutSegments || [])[cutHit.index];
+      if (cutSeg) {
+        this.showContextMenu(e.clientX, e.clientY, cutSeg, "cut");
+        return;
+      }
+    }
+
     let clickedSeg = null;
     let trackType = "";
 
@@ -3784,7 +3974,7 @@ class TimelineEditor {
       menu.appendChild(openBtn);
     }
 
-    if (trackType !== "audio" && trackType !== "image") {
+    if (trackType !== "audio" && trackType !== "image" && trackType !== "cut") {
       const copyPromptBtn = document.createElement("button");
       copyPromptBtn.className = "pr-gap-menu-btn";
       copyPromptBtn.innerHTML = `Copy Prompt`;
@@ -3804,12 +3994,12 @@ class TimelineEditor {
     copySegBtn.innerHTML = `Copy Segment`;
     copySegBtn.onclick = () => {
       this._copiedSegment = { ...seg, id: Date.now().toString() + Math.random().toString(36).substr(2, 5) };
-      this._copiedSegmentTrack = trackType === "audio" ? "audio" : (trackType === "control" ? "control" : (trackType === "camera" ? "camera" : (trackType === "prompt" ? "prompt" : "image")));
+      this._copiedSegmentTrack = ["audio", "control", "camera", "prompt", "cut"].includes(trackType) ? trackType : "image";
       this.dismissContextMenu();
     };
     menu.appendChild(copySegBtn);
 
-    const currentTrack = trackType === "audio" ? "audio" : (trackType === "control" ? "control" : (trackType === "camera" ? "camera" : (trackType === "prompt" ? "prompt" : "image")));
+    const currentTrack = ["audio", "control", "camera", "prompt", "cut"].includes(trackType) ? trackType : "image";
     if (this._copiedSegment && this._copiedSegmentTrack === currentTrack) {
       const pasteReplaceBtn = document.createElement("button");
       pasteReplaceBtn.className = "pr-gap-menu-btn";
@@ -3860,6 +4050,16 @@ class TimelineEditor {
     menu.style.top = `${clientY - 10}px`;
 
     const currentTrack = gap.track === "audio" ? "audio" : (gap.track === "control" ? "control" : (gap.track === "camera" ? "camera" : (gap.track === "prompt" ? "prompt" : "image")));
+
+    const clickedFrame = Math.max(0, Math.round(gap.clickedFrame !== undefined ? gap.clickedFrame : gap.frameStart));
+    const cutBtn = document.createElement("button");
+    cutBtn.className = "pr-gap-menu-btn";
+    cutBtn.innerHTML = `${ICONS.cut} Manual Cut`;
+    cutBtn.onclick = () => {
+      this.addCutAtFrame(clickedFrame);
+      this.dismissContextMenu();
+    };
+    menu.appendChild(cutBtn);
 
     if (this._copiedSegment && this._copiedSegmentTrack === currentTrack) {
       const pasteBtn = document.createElement("button");
@@ -4167,6 +4367,31 @@ class TimelineEditor {
       menu.appendChild(this._makeSettingRow("Display Mode", ctrl));
     }
 
+    if (this.timeline.meta && this.timeline.meta.longAuto) {
+      const segmentSelect = document.createElement("select");
+      segmentSelect.className = "pr-settings-input";
+      segmentSelect.style.width = "150px";
+      const plan = this.getLongAutoPlan();
+      const activeIdx = clamp(parseInt(this.timeline.meta.activeSegmentIndex || 0, 10), 0, Math.max(0, plan.length - 1));
+      this.timeline.meta.activeSegmentIndex = activeIdx;
+
+      for (const seg of plan) {
+        const option = document.createElement("option");
+        option.value = String(seg.index);
+        option.textContent = `#${seg.index} ${this.formatTime(seg.start, true)}-${this.formatTime(seg.end, true)}`;
+        if (seg.index === activeIdx) option.selected = true;
+        segmentSelect.appendChild(option);
+      }
+
+      segmentSelect.addEventListener("change", () => {
+        if (!this.timeline.meta) this.timeline.meta = {};
+        this.timeline.meta.activeSegmentIndex = parseInt(segmentSelect.value, 10) || 0;
+        this.commitChanges();
+      });
+
+      menu.appendChild(this._makeSettingRow("Render Segment", segmentSelect));
+    }
+
     const divider1 = document.createElement("hr");
     divider1.className = "pr-settings-divider";
     menu.appendChild(divider1);
@@ -4468,6 +4693,35 @@ class TimelineEditor {
     this.timeline.controlSegments.sort((a, b) => a.start - b.start);
     this.selectionType = "control";
     this.selectedIndex = this.timeline.controlSegments.findIndex(s => s.id === seg.id);
+    this.updateUIFromSelection();
+    this.commitChanges();
+  }
+
+  addCutAtFrame(frame) {
+    const totalFrames = this.getVisualDurationFrames();
+    const cutFrame = clamp(Math.round(frame || 0), 0, Math.max(0, totalFrames - 1));
+    if (!this.timeline.cutSegments) this.timeline.cutSegments = [];
+
+    const existingIdx = this.timeline.cutSegments.findIndex(seg => Math.abs((seg.start ?? seg.frame ?? 0) - cutFrame) <= 1);
+    if (existingIdx >= 0) {
+      this.selectionType = "cut";
+      this.selectedIndex = existingIdx;
+      this.updateUIFromSelection();
+      this.render();
+      return;
+    }
+
+    const seg = {
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+      type: "cut",
+      start: cutFrame,
+      frame: cutFrame,
+      label: "CUT",
+    };
+    this.timeline.cutSegments.push(seg);
+    this.timeline.cutSegments.sort((a, b) => (a.start ?? a.frame ?? 0) - (b.start ?? b.frame ?? 0));
+    this.selectionType = "cut";
+    this.selectedIndex = this.timeline.cutSegments.findIndex(s => s.id === seg.id);
     this.updateUIFromSelection();
     this.commitChanges();
   }
