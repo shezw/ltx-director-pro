@@ -1185,9 +1185,12 @@ class TimelineEditor {
     return `${prefixWidget?.value || "video/long-auto-tail-frame"}`.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
   }
 
-  async fetchLatestTailFrame(sinceSeconds = 0, attempts = 6) {
+  async fetchLatestTailFrame(sinceSeconds = 0, retryDelays = [0, 5000, 10000]) {
     const prefix = this.getTailSavePrefix();
-    for (let attempt = 0; attempt < Math.max(1, attempts); attempt++) {
+    const delays = Array.isArray(retryDelays) && retryDelays.length ? retryDelays : [0, 5000, 10000];
+    for (let attempt = 0; attempt < delays.length; attempt++) {
+      const delay = Math.max(0, Number(delays[attempt]) || 0);
+      if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
       const params = new URLSearchParams({ prefix });
       if (sinceSeconds) params.set("since", String(Math.max(0, sinceSeconds)));
       const resp = await api.fetchApi(`/shezw/long_auto/latest_tail_frame?${params.toString()}`);
@@ -1204,7 +1207,12 @@ class TimelineEditor {
           guideStrength: 1.0,
         };
       }
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      console.warn("[Shezw LongAuto] Tail-frame lookup did not find a file.", {
+        attempt: attempt + 1,
+        attempts: delays.length,
+        nextDelayMs: delays[attempt + 1] || 0,
+        prefix,
+      });
     }
     return null;
   }
