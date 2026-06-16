@@ -36,6 +36,11 @@ def _load_image_tensor(seg: dict) -> torch.Tensor:
     to a ComfyUI-style image tensor of shape [1, H, W, 3], float32 in [0, 1]."""
     if seg.get("imageFile"):
         image_file = os.path.normpath(str(seg["imageFile"]))
+        normalized_image_file = image_file.replace("\\", os.sep)
+        for prefix in ("output" + os.sep, "input" + os.sep, "temp" + os.sep):
+            if normalized_image_file.lower().startswith(prefix):
+                normalized_image_file = normalized_image_file[len(prefix):]
+                break
         subfolder = os.path.normpath(str(seg.get("subfolder", "") or ""))
         image_type = str(seg.get("imageType", seg.get("fileType", "input")) or "input").lower()
         base_dirs = []
@@ -52,7 +57,8 @@ def _load_image_tensor(seg: dict) -> torch.Tensor:
         candidates = []
         for base_dir in dict.fromkeys(base_dirs):
             if subfolder and subfolder != ".":
-                candidates.append(os.path.join(base_dir, subfolder, os.path.basename(image_file)))
+                candidates.append(os.path.join(base_dir, subfolder, os.path.basename(normalized_image_file)))
+            candidates.append(os.path.join(base_dir, normalized_image_file))
             candidates.append(os.path.join(base_dir, image_file))
 
         for file_path in candidates:

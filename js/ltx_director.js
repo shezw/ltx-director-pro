@@ -1166,8 +1166,38 @@ class TimelineEditor {
       ...Object.keys(outputs).filter((id) => preferred.has(String(id))),
       ...Object.keys(outputs).filter((id) => !preferred.has(String(id))),
     ];
+
+    const imageExtRE = /\.(png|jpg|jpeg|webp)$/i;
+    const normalizeTailString = (value) => {
+      if (typeof value !== "string") return null;
+      let text = value.trim();
+      if (!text || !imageExtRE.test(text)) return null;
+      text = text.replace(/\\/g, "/");
+      const typeMatch = text.match(/^(input|output|temp)\/(.+)$/i);
+      return {
+        imageFile: typeMatch ? typeMatch[2] : text,
+        imageType: typeMatch ? typeMatch[1].toLowerCase() : "output",
+        subfolder: "",
+        guideStrength: 1.0,
+      };
+    };
+    const collectStrings = (value, out = []) => {
+      if (typeof value === "string") {
+        out.push(value);
+      } else if (Array.isArray(value)) {
+        for (const item of value) collectStrings(item, out);
+      } else if (value && typeof value === "object") {
+        for (const item of Object.values(value)) collectStrings(item, out);
+      }
+      return out;
+    };
+
     for (const id of orderedIds) {
-      const images = outputs[id]?.images || [];
+      const nodeOutput = outputs[id] || {};
+      const images = [
+        ...(nodeOutput.images || []),
+        ...(nodeOutput.ui?.images || []),
+      ];
       for (const image of images) {
         const filename = image?.filename || "";
         if (!filename) continue;
@@ -1181,7 +1211,28 @@ class TimelineEditor {
           };
         }
       }
+
+      const strings = collectStrings({
+        filename: nodeOutput.filename,
+        filenames: nodeOutput.filenames,
+        file: nodeOutput.file,
+        files: nodeOutput.files,
+        output: nodeOutput.output,
+        text: nodeOutput.text,
+      });
+      for (const value of strings) {
+        const haystack = `${value} ${id}`.toLowerCase();
+        if (preferred.has(String(id)) || haystack.includes("tail") || haystack.includes("last")) {
+          const tail = normalizeTailString(value);
+          if (tail) return tail;
+        }
+      }
     }
+    console.warn("[Shezw LongAuto] Tail frame not found in prompt history.", {
+      preferredTailNodeIds: [...preferred],
+      outputKeys: Object.keys(outputs),
+      outputShapes: Object.fromEntries(Object.entries(outputs).map(([id, value]) => [id, Object.keys(value || {})])),
+    });
     return null;
   }
 
