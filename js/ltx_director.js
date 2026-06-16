@@ -1166,21 +1166,26 @@ class TimelineEditor {
   getTailSaveNodeIds() {
     const nodes = app?.graph?._nodes || [];
     return nodes
-      .filter((node) => {
-        const title = `${node.title || ""} ${node.type || ""}`.toLowerCase();
-        const widgetText = (node.widgets || []).map((w) => `${w.value || ""}`).join(" ").toLowerCase();
-        return title.includes("save last frame") || title.includes("tail frame") || widgetText.includes("tail-frame") || widgetText.includes("tail_frame");
-      })
+      .filter((node) => this.isTailSaveNode(node))
       .map((node) => String(node.id));
+  }
+
+  isTailSaveNode(node) {
+    if (!node) return false;
+    const type = `${node.type || ""}`.toLowerCase();
+    const title = `${node.title || ""}`.toLowerCase();
+    const widgets = node.widgets || [];
+    const prefixWidget = widgets.find((w) => w.name === "filename_prefix") || widgets[0];
+    const prefix = `${prefixWidget?.value || ""}`.replace(/\\/g, "/").toLowerCase();
+    const isSaveNode = type.includes("save") || title.includes("save");
+    const hasTailPrefix = prefix.includes("tail-frame") || prefix.includes("tail_frame") || prefix.includes("last-frame") || prefix.includes("last_frame");
+    const hasTailTitle = title.includes("save last frame") || title.includes("tail frame");
+    return isSaveNode && (hasTailPrefix || hasTailTitle);
   }
 
   getTailSavePrefix() {
     const nodes = app?.graph?._nodes || [];
-    const node = nodes.find((candidate) => {
-      const title = `${candidate.title || ""} ${candidate.type || ""}`.toLowerCase();
-      const widgetText = (candidate.widgets || []).map((w) => `${w.value || ""}`).join(" ").toLowerCase();
-      return title.includes("save last frame") || title.includes("tail frame") || widgetText.includes("tail-frame") || widgetText.includes("tail_frame");
-    });
+    const node = nodes.find((candidate) => this.isTailSaveNode(candidate));
     const prefixWidget = node?.widgets?.find((w) => w.name === "filename_prefix") || node?.widgets?.[0];
     return `${prefixWidget?.value || "video/long-auto-tail-frame"}`.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
   }
