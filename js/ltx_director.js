@@ -655,7 +655,7 @@ const ICONS = {
 
 // --- Data Models ---
 function parseInitial(jsonStr) {
-  let parsed = { segments: [], promptSegments: [], referenceImages: [], cameraSegments: [], controlSegments: [], audioSegments: [], cutSegments: [] };
+  let parsed = { segments: [], promptSegments: [], referenceImages: [], cameraSegments: [], controlSegments: [], audioSegments: [], cutSegments: [], meta: {} };
   try {
     if (jsonStr) {
       const p = JSON.parse(jsonStr);
@@ -666,6 +666,7 @@ function parseInitial(jsonStr) {
       if (Array.isArray(p.controlSegments)) parsed.controlSegments = p.controlSegments;
       if (Array.isArray(p.audioSegments)) parsed.audioSegments = p.audioSegments;
       if (Array.isArray(p.cutSegments)) parsed.cutSegments = p.cutSegments;
+      if (p.meta && typeof p.meta === "object" && !Array.isArray(p.meta)) parsed.meta = p.meta;
     }
   } catch (e) { }
 
@@ -778,7 +779,7 @@ class TimelineEditor {
     this.canvasHeight = CANVAS_HEIGHT;
 
     // Core data
-    this.timeline = { segments: [], promptSegments: [], referenceImages: [], cameraSegments: [], controlSegments: [], audioSegments: [], cutSegments: [] };
+    this.timeline = { segments: [], promptSegments: [], referenceImages: [], cameraSegments: [], controlSegments: [], audioSegments: [], cutSegments: [], meta: {} };
     this.selectionType = "image"; // "image", "prompt", "reference", "camera", "control", "audio", or "cut"
     this.selectedIndex = -1;
 
@@ -1019,6 +1020,60 @@ class TimelineEditor {
     const outputDuration = this.getDurationFrames();
     if (furthest <= 0) return outputDuration;
     return Math.max(outputDuration, Math.ceil(furthest * 1.30));
+  }
+
+  getLongAutoPlan() {
+    const durationFrames = this.getDurationFrames();
+    const frameRate = this.getFrameRate();
+    const maxFrames = Math.max(1, Math.floor(((this.timeline.meta && this.timeline.meta.maxSegmentSeconds) || 15) * frameRate));
+    const hard = new Map();
+    const addBoundary = (frame, reason) => {
+      const f = clamp(Math.round(frame || 0), 0, durationFrames);
+      if (f <= 0 || f >= durationFrames) return;
+      if (!hard.has(f)) hard.set(f, new Set());
+      hard.get(f).add(reason);
+    };
+    for (const cut of this.timeline.cutSegments || []) {
+      addBoundary(cut.start ?? cut.frame ?? 0, "manual_cut");
+    }
+    for (const cam of this.timeline.cameraSegments || []) {
+      addBoundary(cam.start || 0, "camera_start");
+      addBoundary((cam.start || 0) + (cam.length || 0), "camera_end");
+    }
+
+    const hardPoints = [0, ...[...hard.keys()].sort((a, b) => a - b), durationFrames];
+    const cuts = new Map([[0, new Set(["timeline_start"])]]);
+    const addCut = (frame, reasons) => {
+      if (!cuts.has(frame)) cuts.set(frame, new Set());
+      for (const r of reasons) cuts.get(frame).add(r);
+    };
+
+    for (let i = 0; i < hardPoints.length - 1; i++) {
+      let cursor = hardPoints[i];
+      const right = hardPoints[i + 1];
+      while (right - cursor > maxFrames) {
+        cursor += maxFrames;
+        addCut(cursor, ["max_length"]);
+      }
+      if (right !== durationFrames) addCut(right, hard.get(right) || new Set(["hard_boundary"]));
+    }
+    addCut(durationFrames, ["timeline_end"]);
+
+    const ordered = [...cuts.keys()].sort((a, b) => a - b);
+    const plan = [];
+    for (let i = 0; i < ordered.length - 1; i++) {
+      const start = ordered[i];
+      const end = ordered[i + 1];
+      if (end <= start) continue;
+      plan.push({
+        index: plan.length,
+        start,
+        end,
+        length: end - start,
+        reasons: [...(cuts.get(start) || [])],
+      });
+    }
+    return plan;
   }
 
   // Sync the zoom slider's max attribute to the current getMaxZoom() value,
@@ -3660,7 +3715,8 @@ class TimelineEditor {
         start: Math.max(0, Math.round(s.start ?? s.frame ?? 0)),
         frame: Math.max(0, Math.round(s.start ?? s.frame ?? 0)),
         label: s.label || "CUT",
-      }))
+      })),
+      meta: (this.timeline.meta && typeof this.timeline.meta === "object") ? { ...this.timeline.meta } : {}
     };
 
     const jsonStr = JSON.stringify(toSave);
@@ -4309,6 +4365,31 @@ class TimelineEditor {
       ctrl.appendChild(framesSeg);
 
       menu.appendChild(this._makeSettingRow("Display Mode", ctrl));
+    }
+
+    if (this.timeline.meta && this.timeline.meta.longAuto) {
+      const segmentSelect = document.createElement("select");
+      segmentSelect.className = "pr-settings-input";
+      segmentSelect.style.width = "150px";
+      const plan = this.getLongAutoPlan();
+      const activeIdx = clamp(parseInt(this.timeline.meta.activeSegmentIndex || 0, 10), 0, Math.max(0, plan.length - 1));
+      this.timeline.meta.activeSegmentIndex = activeIdx;
+
+      for (const seg of plan) {
+        const option = document.createElement("option");
+        option.value = String(seg.index);
+        option.textContent = `#${seg.index} ${this.formatTime(seg.start, true)}-${this.formatTime(seg.end, true)}`;
+        if (seg.index === activeIdx) option.selected = true;
+        segmentSelect.appendChild(option);
+      }
+
+      segmentSelect.addEventListener("change", () => {
+        if (!this.timeline.meta) this.timeline.meta = {};
+        this.timeline.meta.activeSegmentIndex = parseInt(segmentSelect.value, 10) || 0;
+        this.commitChanges();
+      });
+
+      menu.appendChild(this._makeSettingRow("Render Segment", segmentSelect));
     }
 
     const divider1 = document.createElement("hr");

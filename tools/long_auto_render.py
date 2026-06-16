@@ -292,6 +292,14 @@ def _crop_timeline_for_segment(
         "controlSegments": [],
         "audioSegments": [],
         "cutSegments": [],
+        "meta": {
+            **copy.deepcopy(timeline.get("meta", {})),
+            "materializedSegment": True,
+            "sourceStartFrame": start,
+            "sourceEndFrame": end,
+            "sourceSegmentIndex": manifest_segment["index"],
+            "sourceCutReasons": manifest_segment.get("cut_reasons", []),
+        },
     }
 
     for key in ("promptSegments", "cameraSegments", "controlSegments", "audioSegments"):

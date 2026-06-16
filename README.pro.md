@@ -76,7 +76,9 @@ long-auto-renders/test-001/
 timeline_data.cutSegments
 ```
 
-直接在 ComfyUI 里单独 queue 这个工作流时，请保持当前 active segment 不超过 15s。真正的 30s/60s 连续任务需要外层 runner/orchestrator 顺序执行每段：第 N 段跑完后拿到 tail-frame PNG；如果第 N+1 段起点没有 keyframe，就把这张 tail-frame 作为下一段首帧。
+直接在 ComfyUI 里单独 queue `long-auto.json` 时，不会再硬跑完整 30s/60s。节点会读取 `timeline_data.meta.longAuto=true`，先按切点和镜头边界规划，然后只渲染当前 `Render Segment`。默认是第 0 段；可以在时间线设置按钮里切换 `Render Segment`。
+
+注意：单次 ComfyUI Queue 仍然只会生成一个 segment。真正的 30s/60s 连续任务需要外层 runner/orchestrator 顺序执行每段：第 N 段跑完后拿到 tail-frame PNG；如果第 N+1 段起点没有 keyframe，就把这张 tail-frame 作为下一段首帧。
 
 ## Pro Console 最新版
 
