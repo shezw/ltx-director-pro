@@ -1159,6 +1159,36 @@ class TimelineEditor {
       .map((node) => String(node.id));
   }
 
+  getTailSavePrefix() {
+    const nodes = app?.graph?._nodes || [];
+    const node = nodes.find((candidate) => {
+      const title = `${candidate.title || ""} ${candidate.type || ""}`.toLowerCase();
+      const widgetText = (candidate.widgets || []).map((w) => `${w.value || ""}`).join(" ").toLowerCase();
+      return title.includes("save last frame") || title.includes("tail frame") || widgetText.includes("tail-frame") || widgetText.includes("tail_frame");
+    });
+    const prefixWidget = node?.widgets?.find((w) => w.name === "filename_prefix") || node?.widgets?.[0];
+    return `${prefixWidget?.value || "video/long-auto-tail-frame"}`.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+  }
+
+  async fetchLatestTailFrame(sinceSeconds = 0) {
+    const prefix = this.getTailSavePrefix();
+    const params = new URLSearchParams({ prefix });
+    if (sinceSeconds) params.set("since", String(Math.max(0, sinceSeconds)));
+    const resp = await api.fetchApi(`/shezw/long_auto/latest_tail_frame?${params.toString()}`);
+    if (!resp.ok) {
+      console.warn("[Shezw LongAuto] Latest tail-frame lookup failed", resp.status, await resp.text());
+      return null;
+    }
+    const data = await resp.json();
+    if (!data?.found || !data?.imageFile) return null;
+    return {
+      imageFile: data.imageFile,
+      imageType: data.type || "output",
+      subfolder: data.subfolder || "",
+      guideStrength: 1.0,
+    };
+  }
+
   extractTailFrameFromHistory(history) {
     const outputs = history?.outputs || {};
     const preferred = new Set(this.getTailSaveNodeIds());
@@ -1270,9 +1300,10 @@ class TimelineEditor {
         }
         this.commitChanges(true);
         await new Promise((resolve) => setTimeout(resolve, 0));
+        const queuedAtSeconds = Date.now() / 1000;
         const promptId = await this.queueCurrentGraphPrompt();
         const history = await this.waitForPromptHistory(promptId);
-        const tailFrame = this.extractTailFrameFromHistory(history);
+        const tailFrame = this.extractTailFrameFromHistory(history) || await this.fetchLatestTailFrame(queuedAtSeconds);
         if (!tailFrame && seg.index < plan.length - 1) {
           throw new Error(`Segment ${seg.index} finished without a tail-frame PNG; stopped before queuing the next segment.`);
         }
