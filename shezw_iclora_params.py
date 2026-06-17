@@ -25,14 +25,14 @@ def _primary_control(guide_data, default_frame_idx=0, default_strength=0.0):
             continue
         if length <= 0 or strength <= 0:
             continue
-        usable.append((start, strength, seg.get("type", "union_control")))
+        usable.append((start, strength, seg.get("type", "union_control"), length, int(seg.get("trimStart", 0) or 0)))
 
     if not usable:
-        return int(default_frame_idx), float(default_strength), ""
+        return int(default_frame_idx), float(default_strength), "", 0, 0
 
     usable.sort(key=lambda item: item[0])
-    frame_idx, strength, control_type = usable[0]
-    return int(frame_idx), float(strength), str(control_type)
+    frame_idx, strength, control_type, length, trim_start = usable[0]
+    return int(frame_idx), float(strength), str(control_type), int(length), int(trim_start)
 
 
 def _control_by_type(guide_data, control_types, default_frame_idx=0, default_strength=0.0):
@@ -56,14 +56,14 @@ def _control_by_type(guide_data, control_types, default_frame_idx=0, default_str
             continue
         if control_type not in control_types or length <= 0 or strength <= 0:
             continue
-        usable.append((start, strength, control_type))
+        usable.append((start, strength, control_type, length, int(seg.get("trimStart", 0) or 0)))
 
     if not usable:
-        return int(default_frame_idx), float(default_strength), ""
+        return int(default_frame_idx), float(default_strength), "", 0, 0
 
     usable.sort(key=lambda item: item[0])
-    frame_idx, strength, control_type = usable[0]
-    return int(frame_idx), float(strength), str(control_type)
+    frame_idx, strength, control_type, length, trim_start = usable[0]
+    return int(frame_idx), float(strength), str(control_type), int(length), int(trim_start)
 
 
 def _get_keyframe_token_count(conditioning):
@@ -154,6 +154,25 @@ def _has_control_image(image):
         except Exception:
             return True
     return True
+
+
+def _slice_control_image(image, trim_start, length):
+    if image is None:
+        return None
+    try:
+        total = int(image.shape[0])
+    except Exception:
+        return image
+    if total <= 0:
+        return image
+    start = max(0, min(total, int(trim_start or 0)))
+    if length and int(length) > 0:
+        end = max(start, min(total, start + int(length)))
+    else:
+        end = total
+    if end <= start:
+        return None
+    return image[start:end]
 
 
 class ShezwDirectorICLoRAParams(io.ComfyNode):
@@ -353,53 +372,59 @@ class ShezwDirectorICLoRAGuide(io.ComfyNode):
                     f"reference {ref.get('name', idx + 1)}",
                 )
 
-        frame_idx, strength, _control_type = _primary_control(guide_data, 0, default_strength)
+        frame_idx, strength, _control_type, control_length, control_trim_start = _primary_control(guide_data, 0, default_strength)
         if _has_control_image(control_image) and strength > 0:
-            positive, negative, latent_image, noise_mask = apply_image_guide(
-                positive,
-                negative,
-                latent_image,
-                noise_mask,
-                control_image,
-                frame_idx,
-                strength,
-                "control guide",
-            )
+            sliced_control_image = _slice_control_image(control_image, control_trim_start, control_length)
+            if sliced_control_image is not None:
+                positive, negative, latent_image, noise_mask = apply_image_guide(
+                    positive,
+                    negative,
+                    latent_image,
+                    noise_mask,
+                    sliced_control_image,
+                    frame_idx,
+                    strength,
+                    "control guide",
+                )
 
-        camera_frame_idx, camera_strength, camera_type = _control_by_type(
+        camera_frame_idx, camera_strength, camera_type, camera_length, camera_trim_start = _control_by_type(
             guide_data,
             {"camera_control", "camera_depth", "camera"},
             0,
             0.0,
         )
         if _has_control_image(camera_control_image) and camera_strength > 0:
-            positive, negative, latent_image, noise_mask = apply_image_guide(
-                positive,
-                negative,
-                latent_image,
-                noise_mask,
-                camera_control_image,
-                camera_frame_idx,
-                camera_strength,
-                f"{camera_type or 'camera_control'} guide",
-            )
+            sliced_camera_control_image = _slice_control_image(camera_control_image, camera_trim_start, camera_length)
+            if sliced_camera_control_image is not None:
+                positive, negative, latent_image, noise_mask = apply_image_guide(
+                    positive,
+                    negative,
+                    latent_image,
+                    noise_mask,
+                    sliced_camera_control_image,
+                    camera_frame_idx,
+                    camera_strength,
+                    f"{camera_type or 'camera_control'} guide",
+                )
 
-        motion_frame_idx, motion_strength, motion_type = _control_by_type(
+        motion_frame_idx, motion_strength, motion_type, motion_length, motion_trim_start = _control_by_type(
             guide_data,
             {"motion_control", "action_control", "motion", "pose_control"},
             0,
             0.0,
         )
         if _has_control_image(motion_control_image) and motion_strength > 0:
-            positive, negative, latent_image, noise_mask = apply_image_guide(
-                positive,
-                negative,
-                latent_image,
-                noise_mask,
-                motion_control_image,
-                motion_frame_idx,
-                motion_strength,
-                f"{motion_type or 'motion_control'} guide",
-            )
+            sliced_motion_control_image = _slice_control_image(motion_control_image, motion_trim_start, motion_length)
+            if sliced_motion_control_image is not None:
+                positive, negative, latent_image, noise_mask = apply_image_guide(
+                    positive,
+                    negative,
+                    latent_image,
+                    noise_mask,
+                    sliced_motion_control_image,
+                    motion_frame_idx,
+                    motion_strength,
+                    f"{motion_type or 'motion_control'} guide",
+                )
 
         return io.NodeOutput(positive, negative, {"samples": latent_image, "noise_mask": noise_mask})

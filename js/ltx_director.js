@@ -1047,7 +1047,8 @@ class TimelineEditor {
     const durationFrames = this.getDurationFrames();
     const frameRate = this.getFrameRate();
     const meta = this.timeline.meta || {};
-    const maxFrames = Math.max(1, Math.floor((meta.maxSegmentSeconds || 15) * frameRate));
+    const maxSegmentSeconds = Number(meta.maxSegmentSeconds || 0);
+    const maxFrames = maxSegmentSeconds > 0 ? Math.max(1, Math.floor(maxSegmentSeconds * frameRate)) : 0;
     const manualToleranceFrames = Math.max(0, Math.round((meta.manualCutToleranceSeconds ?? 0.25) * frameRate));
     const autoCut = meta.autoCut !== false;
     const manualFrames = [];
@@ -1088,7 +1089,7 @@ class TimelineEditor {
     for (let i = 0; i < hardPoints.length - 1; i++) {
       let cursor = hardPoints[i];
       const right = hardPoints[i + 1];
-      while (right - cursor > maxFrames) {
+      while (maxFrames > 0 && right - cursor > maxFrames) {
         const limit = cursor + maxFrames;
         if (isNearManualCut(right) && right - limit <= manualToleranceFrames) break;
         cursor += maxFrames;

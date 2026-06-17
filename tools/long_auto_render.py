@@ -192,16 +192,16 @@ def _keyframe_at_start(timeline: dict[str, Any], start: int, tolerance_frames: i
     matches = [
         seg
         for seg in timeline.get("segments", [])
-        if start <= _seg_start(seg) <= start + tolerance_frames
+        if (_seg_start(seg) <= start < _seg_end(seg)) or (start <= _seg_start(seg) <= start + tolerance_frames)
     ]
     if not matches:
         return None
-    return min(matches, key=lambda seg: _seg_start(seg) - start)
+    return min(matches, key=lambda seg: max(0, _seg_start(seg) - start))
 
 
 def plan_segments(
     workflow: dict[str, Any],
-    max_segment_seconds: float = 15.0,
+    max_segment_seconds: float = 0.0,
     keyframe_tolerance_seconds: float = 0.25,
     manual_cut_tolerance_seconds: float = 0.25,
     min_segment_seconds: float = 1.0,
@@ -213,7 +213,7 @@ def plan_segments(
         auto_cut = bool((timeline.get("meta") or {}).get("autoCut", True))
     fps = _fps(node)
     duration = _duration_frames(node)
-    max_frames = max(1, int(math.floor(max_segment_seconds * fps)))
+    max_frames = max(1, int(math.floor(max_segment_seconds * fps))) if max_segment_seconds and max_segment_seconds > 0 else 0
     tolerance_frames = max(0, int(round(keyframe_tolerance_seconds * fps)))
     manual_tolerance_frames = max(0, int(round(manual_cut_tolerance_seconds * fps)))
     min_frames = max(1, int(round(min_segment_seconds * fps)))
@@ -229,7 +229,7 @@ def plan_segments(
 
     for left, right in zip(hard_points, hard_points[1:]):
       cursor = left
-      while right - cursor > max_frames:
+      while max_frames > 0 and right - cursor > max_frames:
           limit = cursor + max_frames
           if _near_manual_cut(right, manual_frames, manual_tolerance_frames) and right - limit <= manual_tolerance_frames:
               break
@@ -272,6 +272,7 @@ def plan_segments(
                 "first_frame_source": first_frame_source,
                 "start_keyframe_id": keyframe.get("id") if keyframe else None,
                 "keyframe_tolerance_frames": tolerance_frames,
+                "manual_cut_tolerance_frames": manual_tolerance_frames,
                 "previous_tail_required": first_frame_source == "previous_tail",
                 "tail_frame_output": f"segments/{len(segments):03d}/tail_frame.png",
                 "video_output": f"segments/{len(segments):03d}/video.mp4",
@@ -295,7 +296,40 @@ def plan_segments(
     }
 
 
-def _clip_segment(seg: dict[str, Any], start: int, end: int, *, force_start: int | None = None) -> dict[str, Any] | None:
+def _clip_segment(
+    seg: dict[str, Any],
+    start: int,
+    end: int,
+    *,
+    snap_frames: set[int] | None = None,
+    tolerance_frames: int = 0,
+) -> dict[str, Any] | None:
+    seg_start = _seg_start(seg)
+    seg_end = _seg_end(seg)
+    snap_frames = snap_frames or set()
+    if tolerance_frames > 0 and snap_frames:
+        for frame in snap_frames:
+            if abs(seg_start - frame) <= tolerance_frames:
+                seg_start = frame
+            if abs(seg_end - frame) <= tolerance_frames:
+                seg_end = frame
+    if seg_end <= start or seg_start >= end:
+        return None
+    new = copy.deepcopy(seg)
+    clipped_start = max(seg_start, start)
+    clipped_end = min(seg_end, end)
+    new["start"] = clipped_start - start
+    new["length"] = max(1, clipped_end - clipped_start)
+    if "frame" in new:
+        new["frame"] = new["start"]
+    if seg.get("type") == "audio" or seg.get("audioFile"):
+        new["trimStart"] = max(0, int(round(float(seg.get("trimStart", 0) or 0))) + clipped_start - seg_start)
+    elif seg.get("type") == "control" or seg.get("controlType"):
+        new["trimStart"] = max(0, int(round(float(seg.get("trimStart", 0) or 0))) + clipped_start - seg_start)
+    return new
+
+
+def _clip_keyframe_segment(seg: dict[str, Any], start: int, end: int, tolerance_frames: int) -> dict[str, Any] | None:
     seg_start = _seg_start(seg)
     seg_end = _seg_end(seg)
     if seg_end <= start or seg_start >= end:
@@ -303,26 +337,12 @@ def _clip_segment(seg: dict[str, Any], start: int, end: int, *, force_start: int
     new = copy.deepcopy(seg)
     clipped_start = max(seg_start, start)
     clipped_end = min(seg_end, end)
-    new["start"] = 0 if force_start is not None else clipped_start - start
-    new["length"] = max(1, clipped_end - clipped_start)
-    if "frame" in new:
-        new["frame"] = new["start"]
-    if seg.get("type") == "audio":
-        new["trimStart"] = max(0, int(round(float(seg.get("trimStart", 0) or 0))) + clipped_start - seg_start)
-    return new
-
-
-def _clip_keyframe_segment(seg: dict[str, Any], start: int, end: int, tolerance_frames: int) -> dict[str, Any] | None:
-    seg_start = _seg_start(seg)
-    if seg_start < start or seg_start >= end:
-        return None
-    new = copy.deepcopy(seg)
-    local_start = seg_start - start
+    local_start = clipped_start - start
     if local_start <= tolerance_frames:
         local_start = 0
     new["start"] = local_start
     new["frame"] = local_start
-    new["length"] = 1
+    new["length"] = max(1, clipped_end - clipped_start)
     return new
 
 
@@ -333,6 +353,8 @@ def _crop_timeline_for_segment(
     start = manifest_segment["start_frame"]
     end = manifest_segment["end_frame"]
     tolerance_frames = int(manifest_segment.get("keyframe_tolerance_frames", 0) or 0)
+    manual_tolerance_frames = int(manifest_segment.get("manual_cut_tolerance_frames", 0) or 0)
+    manual_frames = {_seg_start(seg) for seg in timeline.get("cutSegments", [])}
     local: dict[str, Any] = {
         "segments": [],
         "promptSegments": [],
@@ -353,7 +375,7 @@ def _crop_timeline_for_segment(
 
     for key in ("promptSegments", "cameraSegments", "controlSegments", "audioSegments"):
         for seg in timeline.get(key, []):
-            clipped = _clip_segment(seg, start, end)
+            clipped = _clip_segment(seg, start, end, snap_frames=manual_frames, tolerance_frames=manual_tolerance_frames)
             if clipped:
                 local[key].append(clipped)
 
@@ -498,10 +520,11 @@ def materialize_segments(source_workflow: dict[str, Any], manifest: dict[str, An
 
 
 def _print_plan(manifest: dict[str, Any]) -> None:
+    max_label = f"{manifest['max_segment_seconds']}s" if manifest.get("max_segment_seconds", 0) else "off"
     print(
         f"Long-auto plan: {manifest['source_duration_seconds']}s, "
         f"{len(manifest['segments'])} segment(s), fps={manifest['frame_rate']}, "
-        f"max={manifest['max_segment_seconds']}s"
+        f"max={max_label}"
     )
     for seg in manifest["segments"]:
         print(
@@ -516,7 +539,7 @@ def _print_plan(manifest: dict[str, Any]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("workflow", type=Path, help="ComfyUI workflow JSON with an LTXDirector node.")
-    parser.add_argument("--max-segment-seconds", type=float, default=15.0)
+    parser.add_argument("--max-segment-seconds", type=float, default=0.0, help="Optional max segment length. Use 0 to disable max-length cuts.")
     parser.add_argument("--keyframe-tolerance-seconds", type=float, default=0.25)
     parser.add_argument("--manual-cut-tolerance-seconds", type=float, default=0.25)
     parser.add_argument("--min-segment-seconds", type=float, default=1.0)
