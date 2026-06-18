@@ -279,6 +279,44 @@ async def shezw_upscale_cleanup(request):
     except Exception as exc:
         return web.json_response({"ok": False, "error": str(exc)}, status=400)
 
+
+@PromptServer.instance.routes.get("/shezw/upscale/find_segments")
+async def shezw_upscale_find_segments(request):
+    try:
+        segment_prefix = _safe_output_prefix(request.query.get("segment_prefix", "video/upscale-segment"))
+        count = max(0, min(100000, int(request.query.get("count", "0") or 0)))
+        output_dir = folder_paths.get_output_directory()
+        found = []
+        missing = []
+        for index in range(count):
+            prefix = f"{segment_prefix}_{index:05d}"
+            pattern = os.path.join(output_dir, *prefix.split("/")) + "*.mp4"
+            candidates = [path for path in glob.glob(pattern) if os.path.isfile(path)]
+            candidates.sort(key=lambda path: (
+                0 if os.path.basename(path).lower().endswith("-audio.mp4") else 1,
+                -os.path.getmtime(path),
+            ))
+            if not candidates:
+                missing.append(index)
+                continue
+            path = candidates[0]
+            rel = os.path.relpath(path, output_dir).replace("\\", "/")
+            found.append({
+                "index": index,
+                "filename": os.path.basename(path),
+                "subfolder": os.path.dirname(rel).replace("\\", "/"),
+                "type": "output",
+                "mtime": os.path.getmtime(path),
+            })
+        return web.json_response({
+            "found": found,
+            "missing": missing,
+            "count": count,
+            "segment_prefix": segment_prefix,
+        })
+    except Exception as exc:
+        return web.json_response({"error": str(exc)}, status=400)
+
 class PromptRelay(ComfyExtension):
     @override
     async def get_node_list(self) -> list[type[io.ComfyNode]]:

@@ -268,6 +268,18 @@ async function freeComfyMemory(promptId = null, waitSeconds = 12) {
   if (wait > 0) await sleep(wait * 1000);
 }
 
+async function findExistingSegments(segmentPrefix, count) {
+  if (!count) return { found: [], missing: [] };
+  const params = new URLSearchParams({ segment_prefix: segmentPrefix, count: String(count) });
+  const resp = await api.fetchApi(`/shezw/upscale/find_segments?${params.toString()}`);
+  const data = await resp.json();
+  if (!resp.ok) throw new Error(data.error || "查找已有分段失败");
+  return {
+    found: Array.isArray(data.found) ? data.found : [],
+    missing: Array.isArray(data.missing) ? data.missing : [],
+  };
+}
+
 function findUpscaleNodes() {
   const nodes = app?.graph?._nodes || [];
   const loadNode = nodes.find((node) => node.type === "VHS_LoadVideo" || `${node.title || ""}`.toLowerCase().includes("load video"));
@@ -319,6 +331,7 @@ app.registerExtension({
           const segmentPrefix = `${getWidgetValue(node, "segment_prefix", 1, "video/upscale-segment") || "video/upscale-segment"}`.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
           const outputPrefix = `${getWidgetValue(node, "output_prefix", 2, "video/upscale-merged") || "video/upscale-merged"}`.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
           const cleanupWaitSeconds = Math.max(0, Math.min(60, Number(getWidgetValue(node, "cleanup_wait_seconds", 3, 12)) || 0));
+          const requestedStartSegment = Math.max(0, Math.floor(Number(getWidgetValue(node, "start_segment_index", 4, 0)) || 0));
           const { loadNode, combineNode } = findUpscaleNodes();
 
           const video = `${getWidgetValue(loadNode, "video", 0, "") || ""}`;
@@ -334,6 +347,10 @@ app.registerExtension({
           const totalFrames = Math.max(1, Number(info.frame_count || Math.round((info.duration || 0) * fps)));
           const chunkFrames = Math.max(1, Math.round(chunkSeconds * fps));
           const totalChunks = Math.ceil(totalFrames / chunkFrames);
+          const startSegment = Math.min(requestedStartSegment, Math.max(0, totalChunks - 1));
+          if (startSegment !== requestedStartSegment) {
+            setWidgetValue(node, "start_segment_index", startSegment, 4);
+          }
 
           const watched = [
             [loadNode, "frame_load_cap", 4],
@@ -344,12 +361,17 @@ app.registerExtension({
             restore.push([n, name, index, getWidgetValue(n, name, index)]);
           }
 
-          setStatus(`Preparing memory cleanup before ${totalChunks} chunks (${chunkSeconds}s each).`);
+          const existing = startSegment > 0 ? await findExistingSegments(segmentPrefix, startSegment) : { found: [], missing: [] };
+          if (existing.missing.length) {
+            console.warn("[Shezw Upscale Chunker] missing previous segments", existing.missing);
+          }
+
+          setStatus(`Preparing memory cleanup before chunks ${startSegment}-${totalChunks - 1} (${chunkSeconds}s each).`);
           await freeComfyMemory(null, Math.min(cleanupWaitSeconds, 5));
 
-          setStatus(`Queueing ${totalChunks} chunks (${chunkSeconds}s each, ${totalFrames} frames total).`);
-          const videos = [];
-          for (let i = 0; i < totalChunks; i++) {
+          setStatus(`Queueing chunks ${startSegment}-${totalChunks - 1} of ${totalChunks} (${totalFrames} frames total).`);
+          const videos = [...existing.found];
+          for (let i = startSegment; i < totalChunks; i++) {
             const start = i * chunkFrames;
             const cap = Math.min(chunkFrames, totalFrames - start);
             const prefix = `${segmentPrefix}_${String(i).padStart(5, "0")}`;
@@ -376,7 +398,8 @@ app.registerExtension({
             await freeComfyMemory(promptId, cleanupWaitSeconds);
           }
 
-          setStatus(`Concatenating ${videos.length} chunks...`);
+          const missingNote = existing.missing.length ? ` (${existing.missing.length} previous chunks missing)` : "";
+          setStatus(`Concatenating ${videos.length} chunks${missingNote}...`);
           const concatResp = await api.fetchApi("/shezw/upscale/concat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
