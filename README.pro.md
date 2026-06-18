@@ -22,7 +22,7 @@ pro-workflows/pro-console.json
 
 | 文件 | 用途 | 状态 |
 |---|---|---|
-| `pro-workflows/long-auto.json` | Long Auto 长视频分段渲染模板。用于 30s/60s 时间线自动切成 <=15s segment，尾帧传递到下一段。 | 实验 |
+| `pro-workflows/long-auto.json` | Long Auto 长视频分段渲染模板。用于 30s/60s 时间线按 cut / camera / IC-Control 切段，尾帧传递到下一段。 | 实验 |
 | `pro-workflows/pro-console.json` | Pro Console 最新版。拆分 `CAMERA CONTROL VIDEO` 和 `MOTION / ACTION CONTROL VIDEO` 两路控制。 | 推荐 |
 | `pro-workflows/camera.json` | Director Pro camera 版。单路 IC-Control 视频输入，含镜头轨道、参考图、最后帧 PNG。 | 可用 |
 | `pro-workflows/lip-sync.json` | 对口型：图 + 音频生成同长度视频，自动按音频时长设置。 | 旧版 |
@@ -58,16 +58,19 @@ long-auto-renders/test-001/
 `manifest.json` 是确认 long-auto 是否真的切分的主入口。每段都会写清楚：
 
 - `start_seconds` / `end_seconds`：本段时间范围。
-- `cut_reasons`：为什么在这里切，例如 `manual_cut`、`camera_start`、`camera_end`、`max_length`。
+- `cut_reasons`：为什么在这里切，例如 `manual_cut`、`camera_start`、`camera_end`、`ic_start`、`ic_end`；如果手动设置了最长段长，也可能出现 `max_length`。
 - `first_frame_source`：本段首帧来源，可能是 `keyframe`、`previous_tail` 或 `timeline_start`。
 - `previous_tail_required`：是否需要把上一段尾帧传给这一段。
 
 设计用途是：
 
 - 外层 long-auto runner 读取完整 30s/60s Director 时间线。
-- 按手动切点、camera 边界和最长 15s 限制自动切段。
-- 手动切点默认有 0.25s 保护区，保护区内的 camera / local prompt / keyframe 自动切点会被忽略，避免出现很碎的相邻切段。
+- 按手动切点切段；打开 `Auto Cut` 时，camera / IC-Control 边界也会参与自动切段。
+- 手动切点默认有 0.25s 保护区，保护区内的 camera / IC-Control 自动切点会被忽略，避免出现很碎的相邻切段。
+- cut 落在静态内容中间时，keyframe 图、local prompt、camera 文本会被裁成前后两份分别传递。
+- cut 落在动态控制内容中间时，IC-Control 段会按帧裁切，并把 `trimStart` / `length` 传给后续 guide 节点。
 - 时间轴交互也会在 0.25s 内吸附到 CUT 线，方便把 keyframe、local prompt、camera/control 段边界对齐到同一切点。
+- Long-Auto 设置面板会记录已成功片段的视频和 tail-frame，可单条 Reset，也可从某个片段 Continue，已完成片段会默认跳过。
 - 每段用 `long-auto.json` 生成一个短视频和一张 tail-frame PNG。
 - 如果下一段起点 0.25s 容差内有 keyframe，用 keyframe；否则使用上一段 tail-frame 作为首帧。
 - 最终把所有 segment video concat，并按需要 mux 回完整原始音频。

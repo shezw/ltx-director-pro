@@ -36,6 +36,11 @@ def _load_image_tensor(seg: dict) -> torch.Tensor:
     to a ComfyUI-style image tensor of shape [1, H, W, 3], float32 in [0, 1]."""
     if seg.get("imageFile"):
         image_file = os.path.normpath(str(seg["imageFile"]))
+        normalized_image_file = image_file.replace("\\", os.sep)
+        for prefix in ("output" + os.sep, "input" + os.sep, "temp" + os.sep):
+            if normalized_image_file.lower().startswith(prefix):
+                normalized_image_file = normalized_image_file[len(prefix):]
+                break
         subfolder = os.path.normpath(str(seg.get("subfolder", "") or ""))
         image_type = str(seg.get("imageType", seg.get("fileType", "input")) or "input").lower()
         base_dirs = []
@@ -52,7 +57,8 @@ def _load_image_tensor(seg: dict) -> torch.Tensor:
         candidates = []
         for base_dir in dict.fromkeys(base_dirs):
             if subfolder and subfolder != ".":
-                candidates.append(os.path.join(base_dir, subfolder, os.path.basename(image_file)))
+                candidates.append(os.path.join(base_dir, subfolder, os.path.basename(normalized_image_file)))
+            candidates.append(os.path.join(base_dir, normalized_image_file))
             candidates.append(os.path.join(base_dir, image_file))
 
         for file_path in candidates:
@@ -312,40 +318,73 @@ def _plan_long_auto_segments(
     tdata: dict,
     duration_frames: int,
     frame_rate: float,
-    max_seconds: float = 15.0,
+    max_seconds: float = 0.0,
     manual_tolerance_seconds: float = 0.25,
+    auto_cut: bool = True,
 ):
+    max_seconds = max(3.0, min(60.0, float(max_seconds or 15.0)))
     max_frames = max(1, int(math.floor(max_seconds * frame_rate)))
     manual_tolerance_frames = max(0, int(round(manual_tolerance_seconds * frame_rate)))
-    manual_frames = [
+    manual_frames = sorted({
         max(0, min(duration_frames, _frame(seg)))
         for seg in tdata.get("cutSegments", [])
-    ]
+        if 0 < _frame(seg) < duration_frames
+    })
 
     def near_manual(frame: int) -> bool:
         return any(abs(frame - cut_frame) <= manual_tolerance_frames for cut_frame in manual_frames)
 
-    hard = {}
-    for frame in manual_frames:
-        _add_boundary(hard, frame, "manual_cut", duration_frames)
-    for seg in tdata.get("cameraSegments", []):
-        for frame, reason in ((_frame(seg), "camera_start"), (_end_frame(seg), "camera_end")):
-            if not near_manual(frame):
-                _add_boundary(hard, frame, reason, duration_frames)
+    soft = {}
+    if auto_cut:
+        for key, prefix in (("cameraSegments", "camera"), ("controlSegments", "ic")):
+            for seg in tdata.get(key, []):
+                for frame, suffix in ((_frame(seg), "start"), (_end_frame(seg), "end")):
+                    if not near_manual(frame):
+                        _add_boundary(soft, frame, f"{prefix}_{suffix}", duration_frames)
 
-    hard_points = [0, *sorted(hard), duration_frames]
     cuts = [(0, {"timeline_start"})]
-    for left, right in zip(hard_points, hard_points[1:]):
+
+    def add_cut(frame: int, reasons: set[str]):
+        frame = max(0, min(duration_frames, int(round(frame))))
+        if 0 < frame <= duration_frames:
+            cuts.append((frame, reasons))
+
+    for frame in manual_frames:
+        add_cut(frame, {"manual_cut"})
+
+    soft_points = sorted(soft)
+    manual_points = [0, *manual_frames, duration_frames]
+    for left, right in zip(manual_points, manual_points[1:]):
         cursor = left
+        local_soft_points = [frame for frame in soft_points if cursor < frame < right]
         while right - cursor > max_frames:
-            limit = cursor + max_frames
-            if near_manual(right) and right - limit <= manual_tolerance_frames:
+            candidates = [frame for frame in local_soft_points if frame > cursor]
+            last_within = None
+            for frame in candidates:
+                if frame - cursor <= max_frames:
+                    last_within = frame
+                else:
+                    break
+
+            if last_within is not None:
+                next_cut = last_within
+                reasons = soft.get(next_cut, {"auto_boundary"})
+            else:
+                remaining = right - cursor
+                if remaining < max_frames * 2:
+                    offset = max(1, min(remaining - 1, int(round(remaining * 2 / 3))))
+                    reasons = {"max_length_balanced"}
+                else:
+                    offset = max_frames
+                    reasons = {"max_length"}
+                next_cut = cursor + offset
+
+            if next_cut <= cursor or next_cut >= right:
                 break
-            cursor = limit
-            cuts.append((cursor, {"max_length"}))
-        if right != duration_frames:
-            cuts.append((right, hard.get(right, {"hard_boundary"})))
-    cuts.append((duration_frames, {"timeline_end"}))
+            add_cut(next_cut, reasons)
+            cursor = next_cut
+
+    add_cut(duration_frames, {"timeline_end"})
 
     merged = {}
     for frame, reasons in cuts:
@@ -365,9 +404,16 @@ def _plan_long_auto_segments(
     return out
 
 
-def _clip_timeline_segment(seg: dict, start: int, end: int):
+def _clip_timeline_segment(seg: dict, start: int, end: int, snap_frames: set[int] | None = None, tolerance_frames: int = 0):
     seg_start = _frame(seg)
     seg_end = _end_frame(seg)
+    snap_frames = snap_frames or set()
+    if tolerance_frames > 0 and snap_frames:
+        for frame in snap_frames:
+            if abs(seg_start - frame) <= tolerance_frames:
+                seg_start = frame
+            if abs(seg_end - frame) <= tolerance_frames:
+                seg_end = frame
     if seg_end <= start or seg_start >= end:
         return None
     clipped_start = max(seg_start, start)
@@ -377,20 +423,39 @@ def _clip_timeline_segment(seg: dict, start: int, end: int):
     new_seg["length"] = max(1, clipped_end - clipped_start)
     if "frame" in new_seg:
         new_seg["frame"] = new_seg["start"]
-    if new_seg.get("type") == "audio":
+    if new_seg.get("type") == "audio" or new_seg.get("audioFile"):
+        new_seg["trimStart"] = max(0, int(round(float(new_seg.get("trimStart", 0) or 0))) + clipped_start - seg_start)
+    elif new_seg.get("type") == "control" or new_seg.get("controlType"):
         new_seg["trimStart"] = max(0, int(round(float(new_seg.get("trimStart", 0) or 0))) + clipped_start - seg_start)
     return new_seg
 
 
-def _keyframe_near_frame(tdata: dict, frame: int, tolerance_frames: int):
+def _clip_keyframe_segment(seg: dict, start: int, end: int, tolerance_frames: int = 0):
+    seg_start = _frame(seg)
+    seg_end = _end_frame(seg)
+    if seg_end <= start or seg_start >= end:
+        return None
+    new_seg = dict(seg)
+    clipped_start = max(seg_start, start)
+    clipped_end = min(seg_end, end)
+    local_start = clipped_start - start
+    if local_start <= tolerance_frames:
+        local_start = 0
+    new_seg["start"] = local_start
+    new_seg["frame"] = local_start
+    new_seg["length"] = max(1, clipped_end - clipped_start)
+    return new_seg
+
+
+def _keyframe_starts_segment(tdata: dict, frame: int, tolerance_frames: int):
     matches = [
         seg
         for seg in tdata.get("segments", [])
-        if abs(_frame(seg) - frame) <= tolerance_frames
+        if (_frame(seg) <= frame < _end_frame(seg)) or (frame <= _frame(seg) <= frame + tolerance_frames)
     ]
     if not matches:
         return None
-    return min(matches, key=lambda seg: abs(_frame(seg) - frame))
+    return min(matches, key=lambda seg: max(0, _frame(seg) - frame))
 
 
 def _camera_prompt(seg: dict) -> str:
@@ -453,15 +518,22 @@ def _apply_long_auto_direct_segment(tdata: dict, duration_frames: int, frame_rat
 
     max_seconds = float(meta.get("maxSegmentSeconds", 15.0) or 15.0)
     manual_tolerance_seconds = float(meta.get("manualCutToleranceSeconds", 0.25) or 0.25)
+    manual_tolerance_frames = max(0, int(round(manual_tolerance_seconds * frame_rate)))
     keyframe_tolerance_seconds = float(meta.get("keyframeToleranceSeconds", 0.25) or 0.25)
+    keyframe_tolerance_frames = max(0, int(round(keyframe_tolerance_seconds * frame_rate)))
+    auto_cut = bool(meta.get("autoCut", True))
     segment_index = int(meta.get("activeSegmentIndex", 0) or 0)
-    plan = _plan_long_auto_segments(tdata, duration_frames, frame_rate, max_seconds, manual_tolerance_seconds)
+    plan = _plan_long_auto_segments(tdata, duration_frames, frame_rate, max_seconds, manual_tolerance_seconds, auto_cut)
     if not plan:
         return tdata, duration_frames, None, None, None
 
     segment_index = max(0, min(segment_index, len(plan) - 1))
     selected = plan[segment_index]
     start, end = selected["start"], selected["end"]
+    manual_frames = {
+        max(0, min(duration_frames, _frame(seg)))
+        for seg in tdata.get("cutSegments", [])
+    }
 
     cropped = {
         "segments": [],
@@ -481,15 +553,19 @@ def _apply_long_auto_direct_segment(tdata: dict, duration_frames: int, frame_rat
         },
     }
 
-    for key in ("segments", "promptSegments", "cameraSegments", "controlSegments", "audioSegments"):
+    for seg in tdata.get("segments", []):
+        clipped = _clip_keyframe_segment(seg, start, end, keyframe_tolerance_frames)
+        if clipped:
+            cropped["segments"].append(clipped)
+
+    for key in ("promptSegments", "cameraSegments", "controlSegments", "audioSegments"):
         for seg in tdata.get(key, []):
-            clipped = _clip_timeline_segment(seg, start, end)
+            clipped = _clip_timeline_segment(seg, start, end, manual_frames, manual_tolerance_frames)
             if clipped:
                 cropped[key].append(clipped)
 
     previous_tail = meta.get("previousTailFrame")
-    keyframe_tolerance_frames = max(0, int(round(keyframe_tolerance_seconds * frame_rate)))
-    if segment_index > 0 and previous_tail and not _keyframe_near_frame(tdata, start, keyframe_tolerance_frames):
+    if segment_index > 0 and previous_tail and not _keyframe_starts_segment(tdata, start, keyframe_tolerance_frames):
         if isinstance(previous_tail, str):
             tail_seg = {"imageFile": previous_tail, "imageType": "output"}
         elif isinstance(previous_tail, dict):
@@ -798,6 +874,7 @@ class LTXDirector(io.ComfyNode):
                     "type": seg.get("controlType", "camera_depth"),
                     "start": start,
                     "length": min(length, duration_frames - start),
+                    "trimStart": int(seg.get("trimStart", 0) or 0),
                     "strength": float(seg.get("strength", 0.75)),
                     "prompt": seg.get("prompt", ""),
                 })
