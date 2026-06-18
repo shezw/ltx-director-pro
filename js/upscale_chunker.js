@@ -172,6 +172,18 @@ async function waitForHistory(promptId, timeoutMs = 1000 * 60 * 60 * 8) {
   throw new Error(`Timed out waiting for prompt ${promptId}.`);
 }
 
+async function freeComfyMemory() {
+  try {
+    await api.fetchApi("/free", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ unload_models: false, free_memory: true }),
+    });
+  } catch (err) {
+    console.warn("[Shezw Upscale Chunker] Comfy memory free request failed", err);
+  }
+}
+
 function findUpscaleNodes() {
   const nodes = app?.graph?._nodes || [];
   const loadNode = nodes.find((node) => node.type === "VHS_LoadVideo" || `${node.title || ""}`.toLowerCase().includes("load video"));
@@ -264,6 +276,9 @@ app.registerExtension({
             const videoRef = extractVideoFromHistory(history, prefix);
             if (!videoRef) throw new Error(`Chunk ${i + 1} 完成但没有找到分段视频输出。`);
             videos.push(videoRef);
+            setStatus(`Chunk ${i + 1}/${totalChunks} saved. Freeing memory...`);
+            await freeComfyMemory();
+            await sleep(1000);
           }
 
           setStatus(`Concatenating ${videos.length} chunks...`);
@@ -298,4 +313,3 @@ app.registerExtension({
     };
   },
 });
-
