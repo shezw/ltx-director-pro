@@ -1,0 +1,20 @@
+class ShezwUpscaleChunker:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "chunk_seconds": ("INT", {"default": 30, "min": 3, "max": 300, "step": 1}),
+                "segment_prefix": ("STRING", {"default": "video/upscale-segment"}),
+                "output_prefix": ("STRING", {"default": "video/upscale-merged"}),
+            }
+        }
+
+    RETURN_TYPES = ()
+    FUNCTION = "execute"
+    CATEGORY = "shezw/director-pro"
+    OUTPUT_NODE = True
+
+    def execute(self, chunk_seconds=30, segment_prefix="video/upscale-segment", output_prefix="video/upscale-merged"):
+        # Frontend-only orchestration node. The browser extension queues the
+        # actual upscale graph repeatedly with VHS_LoadVideo skip/cap updates.
+        return ()

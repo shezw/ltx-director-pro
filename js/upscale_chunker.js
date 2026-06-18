@@ -1,0 +1,301 @@
+const { app } = window.comfyAPI.app;
+const { api } = window.comfyAPI.api;
+
+const SHEZW_UPSCALE_STYLES = `
+  .shezw-upscale-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px;
+    border-radius: 6px;
+    background: #1f1f1f;
+    border: 1px solid #111;
+    color: #ddd;
+    font: 12px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  .shezw-upscale-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: space-between;
+  }
+  .shezw-upscale-btn {
+    background: #263243;
+    border: 1px solid #5f83b6;
+    color: #f2f7ff;
+    border-radius: 4px;
+    padding: 7px 10px;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .shezw-upscale-btn:disabled {
+    opacity: 0.55;
+    cursor: progress;
+  }
+  .shezw-upscale-status {
+    color: #aaa;
+    line-height: 1.45;
+    word-break: break-word;
+  }
+`;
+
+if (!document.getElementById("shezw-upscale-chunker-styles")) {
+  const style = document.createElement("style");
+  style.id = "shezw-upscale-chunker-styles";
+  style.textContent = SHEZW_UPSCALE_STYLES;
+  document.head.appendChild(style);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function findWidget(node, name, fallbackIndex = -1) {
+  if (!node?.widgets) return null;
+  return node.widgets.find((w) => w.name === name) || (fallbackIndex >= 0 ? node.widgets[fallbackIndex] : null);
+}
+
+function setWidgetValue(node, name, value, fallbackIndex = -1) {
+  const widget = findWidget(node, name, fallbackIndex);
+  if (!widget) throw new Error(`Widget ${name} not found on ${node?.title || node?.type}`);
+  widget.value = value;
+  if (widget.callback) {
+    try { widget.callback(value, app.canvas, node, null, null); } catch (_) { }
+  }
+}
+
+function getWidgetValue(node, name, fallbackIndex = -1, fallback = null) {
+  const widget = findWidget(node, name, fallbackIndex);
+  return widget ? widget.value : fallback;
+}
+
+function normalizeVideoRef(value, fallback = {}) {
+  if (!value) return null;
+  const videoExtRE = /\.(mp4|webm|mov|mkv)$/i;
+  let filename = "";
+  let type = fallback.type || "output";
+  let subfolder = fallback.subfolder || "";
+
+  if (typeof value === "string") {
+    const text = value.trim().replace(/\\/g, "/");
+    if (!videoExtRE.test(text)) return null;
+    const typeMatch = text.match(/^(input|output|temp)\/(.+)$/i);
+    const pathText = typeMatch ? typeMatch[2] : text;
+    const slashIdx = pathText.lastIndexOf("/");
+    filename = slashIdx >= 0 ? pathText.slice(slashIdx + 1) : pathText;
+    subfolder = slashIdx >= 0 ? pathText.slice(0, slashIdx) : subfolder;
+    type = typeMatch ? typeMatch[1].toLowerCase() : type;
+  } else if (typeof value === "object") {
+    filename = value.filename || value.file || value.name || "";
+    type = value.type || type;
+    subfolder = value.subfolder || subfolder;
+  }
+
+  if (!filename || !videoExtRE.test(filename)) return null;
+  return { filename, type, subfolder };
+}
+
+function collectValues(value, out = []) {
+  if (typeof value === "string") {
+    out.push(value);
+  } else if (Array.isArray(value)) {
+    for (const item of value) collectValues(item, out);
+  } else if (value && typeof value === "object") {
+    for (const item of Object.values(value)) collectValues(item, out);
+  }
+  return out;
+}
+
+function extractVideoFromHistory(history, prefix) {
+  const outputs = history?.outputs || {};
+  const normalizedPrefix = (prefix || "").replace(/\\/g, "/").toLowerCase();
+  for (const nodeOutput of Object.values(outputs)) {
+    const candidates = [
+      ...(nodeOutput?.gifs || []),
+      ...(nodeOutput?.videos || []),
+      ...(nodeOutput?.ui?.gifs || []),
+      ...(nodeOutput?.ui?.videos || []),
+    ];
+    for (const item of candidates) {
+      const video = normalizeVideoRef(item);
+      const haystack = `${video?.subfolder || ""}/${video?.filename || ""}`.toLowerCase();
+      if (video && (!normalizedPrefix || haystack.includes(normalizedPrefix))) return video;
+    }
+
+    for (const item of collectValues(nodeOutput)) {
+      const video = normalizeVideoRef(item);
+      const haystack = `${video?.subfolder || ""}/${video?.filename || ""}`.toLowerCase();
+      if (video && (!normalizedPrefix || haystack.includes(normalizedPrefix))) return video;
+    }
+  }
+  return null;
+}
+
+async function queueGraphPrompt() {
+  if (!app?.graphToPrompt || !api) throw new Error("ComfyUI graphToPrompt API is unavailable.");
+  const prompt = await app.graphToPrompt();
+  if (typeof api.queuePrompt === "function") {
+    const queued = await api.queuePrompt(0, prompt);
+    const promptId = queued?.prompt_id || queued?.promptId || queued?.id;
+    if (promptId) return String(promptId);
+  }
+  const resp = await api.fetchApi("/prompt", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      client_id: api.clientId,
+      prompt: prompt.output,
+      extra_data: { extra_pnginfo: { workflow: prompt.workflow } },
+    }),
+  });
+  const data = await resp.json();
+  if (data?.node_errors && Object.keys(data.node_errors).length) {
+    throw new Error(`ComfyUI rejected the prompt: ${JSON.stringify(data.node_errors)}`);
+  }
+  const promptId = data?.prompt_id || data?.promptId || data?.id;
+  if (!promptId) throw new Error(`ComfyUI did not return prompt_id: ${JSON.stringify(data)}`);
+  return String(promptId);
+}
+
+async function waitForHistory(promptId, timeoutMs = 1000 * 60 * 60 * 8) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const resp = await api.fetchApi(`/history/${encodeURIComponent(promptId)}`);
+    if (resp.ok) {
+      const data = await resp.json();
+      const item = data?.[promptId] || data;
+      if (item?.status?.status_str === "error") throw new Error(`ComfyUI prompt ${promptId} failed.`);
+      if (item?.outputs && Object.keys(item.outputs).length) return item;
+    }
+    await sleep(2000);
+  }
+  throw new Error(`Timed out waiting for prompt ${promptId}.`);
+}
+
+function findUpscaleNodes() {
+  const nodes = app?.graph?._nodes || [];
+  const loadNode = nodes.find((node) => node.type === "VHS_LoadVideo" || `${node.title || ""}`.toLowerCase().includes("load video"));
+  const combineNode = nodes.find((node) => node.type === "VHS_VideoCombine" || `${node.title || ""}`.toLowerCase().includes("save") && node.widgets?.some((w) => w.name === "filename_prefix"));
+  if (!loadNode) throw new Error("没有找到 VHS_LoadVideo 节点。");
+  if (!combineNode) throw new Error("没有找到 VHS_VideoCombine 节点。");
+  return { loadNode, combineNode };
+}
+
+app.registerExtension({
+  name: "Shezw.UpscaleChunker",
+  async beforeRegisterNodeDef(nodeType, nodeData) {
+    if (nodeData.name !== "ShezwUpscaleChunker") return;
+
+    const onNodeCreated = nodeType.prototype.onNodeCreated;
+    nodeType.prototype.onNodeCreated = function () {
+      if (onNodeCreated) onNodeCreated.apply(this, arguments);
+      const node = this;
+
+      const container = document.createElement("div");
+      container.className = "shezw-upscale-wrap";
+
+      const row = document.createElement("div");
+      row.className = "shezw-upscale-row";
+      const title = document.createElement("div");
+      title.textContent = "Chunked Upscale";
+      title.style.fontWeight = "700";
+      const button = document.createElement("button");
+      button.className = "shezw-upscale-btn";
+      button.textContent = "Queue 30s Chunks";
+      row.appendChild(title);
+      row.appendChild(button);
+
+      const status = document.createElement("div");
+      status.className = "shezw-upscale-status";
+      status.textContent = "Uses VHS_LoadVideo frame_load_cap / skip_first_frames, then concatenates outputs.";
+
+      container.appendChild(row);
+      container.appendChild(status);
+
+      const setStatus = (text) => { status.textContent = text; };
+
+      button.addEventListener("click", async (ev) => {
+        ev.stopPropagation();
+        button.disabled = true;
+        const restore = [];
+        try {
+          const chunkSeconds = Math.max(3, Number(getWidgetValue(node, "chunk_seconds", 0, 30)) || 30);
+          const segmentPrefix = `${getWidgetValue(node, "segment_prefix", 1, "video/upscale-segment") || "video/upscale-segment"}`.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+          const outputPrefix = `${getWidgetValue(node, "output_prefix", 2, "video/upscale-merged") || "video/upscale-merged"}`.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+          const { loadNode, combineNode } = findUpscaleNodes();
+
+          const video = `${getWidgetValue(loadNode, "video", 0, "") || ""}`;
+          const forceRate = Number(getWidgetValue(loadNode, "force_rate", 1, 0)) || 0;
+          if (!video) throw new Error("VHS_LoadVideo 没有选择输入视频。");
+
+          const infoParams = new URLSearchParams({ filename: video, type: "input", force_rate: String(forceRate) });
+          const infoResp = await api.fetchApi(`/shezw/upscale/video_info?${infoParams.toString()}`);
+          const info = await infoResp.json();
+          if (!infoResp.ok) throw new Error(info.error || "读取视频信息失败");
+
+          const fps = Math.max(1, Number(info.fps || 24));
+          const totalFrames = Math.max(1, Number(info.frame_count || Math.round((info.duration || 0) * fps)));
+          const chunkFrames = Math.max(1, Math.round(chunkSeconds * fps));
+          const totalChunks = Math.ceil(totalFrames / chunkFrames);
+
+          const watched = [
+            [loadNode, "frame_load_cap", 4],
+            [loadNode, "skip_first_frames", 5],
+            [combineNode, "filename_prefix", 2],
+          ];
+          for (const [n, name, index] of watched) {
+            restore.push([n, name, index, getWidgetValue(n, name, index)]);
+          }
+
+          const videos = [];
+          for (let i = 0; i < totalChunks; i++) {
+            const start = i * chunkFrames;
+            const cap = Math.min(chunkFrames, totalFrames - start);
+            const prefix = `${segmentPrefix}_${String(i).padStart(5, "0")}`;
+            setStatus(`Chunk ${i + 1}/${totalChunks}: frames ${start}-${start + cap - 1}`);
+
+            setWidgetValue(loadNode, "skip_first_frames", start, 5);
+            setWidgetValue(loadNode, "frame_load_cap", cap, 4);
+            setWidgetValue(combineNode, "filename_prefix", prefix, 2);
+            app.graph.setDirtyCanvas(true, true);
+
+            const promptId = await queueGraphPrompt();
+            const history = await waitForHistory(promptId);
+            const videoRef = extractVideoFromHistory(history, prefix);
+            if (!videoRef) throw new Error(`Chunk ${i + 1} 完成但没有找到分段视频输出。`);
+            videos.push(videoRef);
+          }
+
+          setStatus(`Concatenating ${videos.length} chunks...`);
+          const concatResp = await api.fetchApi("/shezw/upscale/concat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ videos, output_prefix: outputPrefix }),
+          });
+          const concatData = await concatResp.json();
+          if (!concatResp.ok) throw new Error(concatData.error || "拼接失败");
+          const finalPath = [concatData.subfolder, concatData.filename].filter(Boolean).join("/");
+          setStatus(`Done: output/${finalPath} (${concatData.method}, ${concatData.count} chunks)`);
+        } catch (err) {
+          console.error("[Shezw Upscale Chunker]", err);
+          setStatus(`Error: ${err.message || err}`);
+        } finally {
+          for (const [n, name, index, value] of restore.reverse()) {
+            try { setWidgetValue(n, name, value, index); } catch (_) { }
+          }
+          app.graph.setDirtyCanvas(true, true);
+          button.disabled = false;
+        }
+      });
+
+      setTimeout(() => {
+        node.domWidget = node.addDOMWidget("UpscaleChunker", "div", container);
+        node.domWidget.computeSize = () => [360, 108];
+        if (node.size[0] < 420) node.size[0] = 420;
+        if (node.size[1] < 210) node.size[1] = 210;
+        app.graph.setDirtyCanvas(true, true);
+      }, 100);
+    };
+  },
+});
+

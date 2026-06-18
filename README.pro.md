@@ -26,7 +26,7 @@ pro-workflows/pro-console.json
 | `pro-workflows/pro-console.json` | Pro Console 最新版。拆分 `CAMERA CONTROL VIDEO` 和 `MOTION / ACTION CONTROL VIDEO` 两路控制。 | 推荐 |
 | `pro-workflows/camera.json` | Director Pro camera 版。单路 IC-Control 视频输入，含镜头轨道、参考图、最后帧 PNG。 | 可用 |
 | `pro-workflows/lip-sync.json` | 对口型：图 + 音频生成同长度视频，自动按音频时长设置。 | 旧版 |
-| `pro-workflows/upscale.json` | 单纯视频高清放大。 | 可用 |
+| `pro-workflows/upscale.json` | 单纯视频高清放大；支持 30s 分段 upscale 后自动拼接。 | 可用 |
 
 ## Long Auto
 
@@ -121,6 +121,24 @@ pro-workflows/pro-console.json
 ```text
 video/pro-console-last-frame
 ```
+
+## Upscale 长视频分段
+
+推荐打开：
+
+```text
+pro-workflows/upscale.json
+```
+
+普通短视频可以直接运行原链路。超过 60s 或内存/显存不够时，用 `CHUNKED UPSCALE CONTROLLER` 节点里的 `Queue 30s Chunks`：
+
+- 自动读取 `VHS_LoadVideo` 的输入视频、真实 fps 和总帧数。
+- 每次只设置 `skip_first_frames + frame_load_cap` 加载 30s。
+- 每段仍然走原来的 `UpscaleModelLoader -> ImageUpscaleWithModel -> ImageScale -> VHS_VideoCombine`。
+- 分段输出前缀默认是 `video/upscale-segment_00000...`。
+- 全部分段完成后用 ffmpeg 拼接成 `video/upscale-merged_*.mp4`。
+
+分段秒数可以在 `Shezw Upscale Chunker` 节点的 `chunk_seconds` 里改，默认 `30`。
 
 ## 镜头控制
 
