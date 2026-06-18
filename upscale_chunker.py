@@ -12,7 +12,6 @@ class ShezwUpscaleChunker:
     RETURN_TYPES = ()
     FUNCTION = "execute"
     CATEGORY = "shezw/director-pro"
-    OUTPUT_NODE = True
 
     def execute(self, chunk_seconds=30, segment_prefix="video/upscale-segment", output_prefix="video/upscale-merged"):
         # Frontend-only orchestration node. The browser extension queues the

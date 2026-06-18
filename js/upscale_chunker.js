@@ -59,6 +59,18 @@ function setWidgetValue(node, name, value, fallbackIndex = -1) {
   const widget = findWidget(node, name, fallbackIndex);
   if (!widget) throw new Error(`Widget ${name} not found on ${node?.title || node?.type}`);
   widget.value = value;
+  if (Array.isArray(node.widgets_values) && fallbackIndex >= 0) {
+    node.widgets_values[fallbackIndex] = value;
+  } else if (node.widgets_values && typeof node.widgets_values === "object") {
+    node.widgets_values[name] = value;
+  }
+  const previewParams = node.widgets_values?.videopreview?.params;
+  if (previewParams && typeof previewParams === "object") {
+    if (name === "video") previewParams.filename = value;
+    if (name === "force_rate" || name === "frame_load_cap" || name === "skip_first_frames") {
+      previewParams[name] = value;
+    }
+  }
   if (widget.callback) {
     try { widget.callback(value, app.canvas, node, null, null); } catch (_) { }
   }
@@ -131,9 +143,56 @@ function extractVideoFromHistory(history, prefix) {
   return null;
 }
 
-async function queueGraphPrompt() {
+function collectInputNodeIds(value, out = new Set()) {
+  if (Array.isArray(value)) {
+    if ((typeof value[0] === "string" || typeof value[0] === "number") && typeof value[1] === "number") {
+      out.add(String(value[0]));
+      return out;
+    }
+    for (const item of value) collectInputNodeIds(item, out);
+  } else if (value && typeof value === "object") {
+    for (const item of Object.values(value)) collectInputNodeIds(item, out);
+  }
+  return out;
+}
+
+function collectPromptDependencyIds(promptOutput, terminalIds) {
+  const keep = new Set();
+  const visit = (id) => {
+    const key = String(id);
+    if (keep.has(key) || !promptOutput[key]) return;
+    keep.add(key);
+    const inputs = promptOutput[key]?.inputs || {};
+    for (const inputId of collectInputNodeIds(inputs)) visit(inputId);
+  };
+  for (const id of terminalIds) visit(id);
+  return keep;
+}
+
+function sanitizePromptOutputs(prompt, outputNodeIds = []) {
+  if (!prompt?.output) throw new Error("ComfyUI graphToPrompt returned an empty prompt.");
+  const chunkerIds = new Set((app?.graph?._nodes || [])
+    .filter((node) => node?.type === "ShezwUpscaleChunker")
+    .map((node) => String(node.id)));
+
+  for (const id of chunkerIds) delete prompt.output[id];
+
+  if (outputNodeIds.length) {
+    const keep = collectPromptDependencyIds(prompt.output, outputNodeIds.map((id) => String(id)));
+    prompt.output = Object.fromEntries(
+      Object.entries(prompt.output).filter(([id]) => keep.has(String(id)))
+    );
+  }
+
+  if (!Object.keys(prompt.output).length) {
+    throw new Error("没有可提交的分段视频输出节点。请确认工作流里存在 VHS_VideoCombine。");
+  }
+  return prompt;
+}
+
+async function queueGraphPrompt(outputNodeIds = []) {
   if (!app?.graphToPrompt || !api) throw new Error("ComfyUI graphToPrompt API is unavailable.");
-  const prompt = await app.graphToPrompt();
+  const prompt = sanitizePromptOutputs(await app.graphToPrompt(), outputNodeIds);
   if (typeof api.queuePrompt === "function") {
     const queued = await api.queuePrompt(0, prompt);
     const promptId = queued?.prompt_id || queued?.promptId || queued?.id;
@@ -187,7 +246,7 @@ async function freeComfyMemory() {
 function findUpscaleNodes() {
   const nodes = app?.graph?._nodes || [];
   const loadNode = nodes.find((node) => node.type === "VHS_LoadVideo" || `${node.title || ""}`.toLowerCase().includes("load video"));
-  const combineNode = nodes.find((node) => node.type === "VHS_VideoCombine" || `${node.title || ""}`.toLowerCase().includes("save") && node.widgets?.some((w) => w.name === "filename_prefix"));
+  const combineNode = nodes.find((node) => node.type === "VHS_VideoCombine" || (`${node.title || ""}`.toLowerCase().includes("save") && node.widgets?.some((w) => w.name === "filename_prefix")));
   if (!loadNode) throw new Error("没有找到 VHS_LoadVideo 节点。");
   if (!combineNode) throw new Error("没有找到 VHS_VideoCombine 节点。");
   return { loadNode, combineNode };
@@ -213,7 +272,7 @@ app.registerExtension({
       title.style.fontWeight = "700";
       const button = document.createElement("button");
       button.className = "shezw-upscale-btn";
-      button.textContent = "Queue 30s Chunks";
+      button.textContent = "Queue Chunks";
       row.appendChild(title);
       row.appendChild(button);
 
@@ -259,6 +318,7 @@ app.registerExtension({
             restore.push([n, name, index, getWidgetValue(n, name, index)]);
           }
 
+          setStatus(`Queueing ${totalChunks} chunks (${chunkSeconds}s each, ${totalFrames} frames total).`);
           const videos = [];
           for (let i = 0; i < totalChunks; i++) {
             const start = i * chunkFrames;
@@ -270,8 +330,15 @@ app.registerExtension({
             setWidgetValue(loadNode, "frame_load_cap", cap, 4);
             setWidgetValue(combineNode, "filename_prefix", prefix, 2);
             app.graph.setDirtyCanvas(true, true);
+            console.info("[Shezw Upscale Chunker] queue chunk", {
+              index: i,
+              start,
+              cap,
+              prefix,
+              outputNode: combineNode.id,
+            });
 
-            const promptId = await queueGraphPrompt();
+            const promptId = await queueGraphPrompt([combineNode.id]);
             const history = await waitForHistory(promptId);
             const videoRef = extractVideoFromHistory(history, prefix);
             if (!videoRef) throw new Error(`Chunk ${i + 1} 完成但没有找到分段视频输出。`);
