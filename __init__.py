@@ -164,6 +164,54 @@ def _trim_windows_native_memory():
     return notes
 
 
+def _windows_process_memory_snapshot():
+    if os.name != "nt":
+        return {}
+    snapshot = {}
+    try:
+        import ctypes
+
+        class ProcessMemoryCountersEx(ctypes.Structure):
+            _fields_ = [
+                ("cb", ctypes.c_ulong),
+                ("PageFaultCount", ctypes.c_ulong),
+                ("PeakWorkingSetSize", ctypes.c_size_t),
+                ("WorkingSetSize", ctypes.c_size_t),
+                ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                ("PagefileUsage", ctypes.c_size_t),
+                ("PeakPagefileUsage", ctypes.c_size_t),
+                ("PrivateUsage", ctypes.c_size_t),
+            ]
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        psapi = ctypes.WinDLL("psapi", use_last_error=True)
+        kernel32.GetCurrentProcess.restype = ctypes.c_void_p
+        psapi.GetProcessMemoryInfo.argtypes = [
+            ctypes.c_void_p,
+            ctypes.POINTER(ProcessMemoryCountersEx),
+            ctypes.c_ulong,
+        ]
+        psapi.GetProcessMemoryInfo.restype = ctypes.c_bool
+        counters = ProcessMemoryCountersEx()
+        counters.cb = ctypes.sizeof(counters)
+        ctypes.set_last_error(0)
+        ok = psapi.GetProcessMemoryInfo(kernel32.GetCurrentProcess(), ctypes.byref(counters), counters.cb)
+        if not ok:
+            snapshot["win_mem_error"] = f"GetProcessMemoryInfo failed:{ctypes.get_last_error()}"
+            return snapshot
+        snapshot["win_working_set_mb"] = round(counters.WorkingSetSize / (1024 * 1024), 1)
+        snapshot["win_peak_working_set_mb"] = round(counters.PeakWorkingSetSize / (1024 * 1024), 1)
+        snapshot["win_pagefile_mb"] = round(counters.PagefileUsage / (1024 * 1024), 1)
+        snapshot["win_peak_pagefile_mb"] = round(counters.PeakPagefileUsage / (1024 * 1024), 1)
+        snapshot["win_private_mb"] = round(counters.PrivateUsage / (1024 * 1024), 1)
+    except Exception as exc:
+        snapshot["win_mem_error"] = str(exc)
+    return snapshot
+
+
 def _memory_snapshot():
     snapshot = {}
     try:
@@ -185,6 +233,8 @@ def _memory_snapshot():
     except Exception as exc:
         snapshot["error"] = str(exc)
 
+    snapshot.update(_windows_process_memory_snapshot())
+
     try:
         import torch
         if torch.cuda.is_available():
@@ -204,8 +254,14 @@ def _format_memory_snapshot(snapshot):
         "vms_mb",
         "available_mb",
         "system_percent",
+        "win_working_set_mb",
+        "win_peak_working_set_mb",
+        "win_pagefile_mb",
+        "win_peak_pagefile_mb",
+        "win_private_mb",
         "cuda_allocated_mb",
         "cuda_reserved_mb",
+        "win_mem_error",
         "error",
     )
     return ",".join(f"{key}={snapshot[key]}" for key in ordered_keys if key in snapshot)

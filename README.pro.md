@@ -152,7 +152,7 @@ pro-workflows/upscale.json
 - 每段完成后会主动 `unload_models`、触发 ComfyUI model cleanup、`torch.cuda.empty_cache()` 和 Python `gc.collect()`。
 - 前端会先读取该分段的 history 输出并记录视频文件，再删除该 prompt history 并继续下一段。
 
-2026-06-19 现场日志确认：分段清理钩子已经安装并执行，`CacheType.NONE` 生效，清理后的 live `torch.Tensor` 统计为 `0MB`，但 Windows 进程 `USS/RSS` 仍从约 27GB 增长到约 48GB 且没有回落。因此当前重点不是继续缩短分段，而是确认大块 CPU/native 分配在 Python tensor 引用释放后是否被 Windows / C runtime / PyTorch CPU allocator 留在进程私有堆里。后端清理日志会额外记录 `_heapmin`、`HeapCompact`、`SetProcessWorkingSetSize` 和 `EmptyWorkingSet` 的结果及 Windows 错误码；如果这些 native trim 仍不能让 `USS` 回落，说明同一 ComfyUI 进程内无法可靠把这类分配还给系统，后续需要改成进程隔离或真正流式处理，避免整段大批量图像在一个长期运行的 Python 进程里反复申请。
+2026-06-19 现场日志确认：分段清理钩子已经安装并执行，`CacheType.NONE` 生效，清理后的 live `torch.Tensor` 统计为 `0MB`。加入 Windows native trim 后，`_heapmin`、`HeapCompact`、`SetProcessWorkingSetSize` 和 `EmptyWorkingSet` 都能执行，`rss/uss` 会明显下降；但 `vms` 仍会逐段增长，用户现场观察仍有约 2GB/段不干净。后端日志因此继续补充 Windows 原生 `GetProcessMemoryInfo` 指标：`win_working_set_mb`、`win_pagefile_mb`、`win_private_mb`。后续判断以 `win_private_mb/PagefileUsage` 为准，而不是只看被 working-set trim 影响很大的 `rss/uss` 或只代表地址空间保留的 `vms`。
 
 ## 镜头控制
 
