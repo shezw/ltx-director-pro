@@ -148,6 +148,59 @@ def _format_memory_snapshot(snapshot):
     return ",".join(f"{key}={snapshot[key]}" for key in ordered_keys if key in snapshot)
 
 
+def _live_torch_tensor_snapshot(limit: int = 6):
+    snapshot = {"count": 0, "total_mb": 0.0, "top": []}
+    try:
+        import torch
+        groups = {}
+        total_bytes = 0
+        count = 0
+        for obj in gc.get_objects():
+            try:
+                if not isinstance(obj, torch.Tensor):
+                    continue
+                size_bytes = obj.numel() * obj.element_size()
+                key = (tuple(obj.shape), str(obj.dtype), str(obj.device), bool(obj.requires_grad))
+            except Exception:
+                continue
+            count += 1
+            total_bytes += size_bytes
+            if key not in groups:
+                groups[key] = {"count": 0, "bytes": 0}
+            groups[key]["count"] += 1
+            groups[key]["bytes"] += size_bytes
+        top = sorted(groups.items(), key=lambda item: item[1]["bytes"], reverse=True)[:limit]
+        snapshot = {
+            "count": count,
+            "total_mb": round(total_bytes / (1024 * 1024), 1),
+            "top": [
+                {
+                    "shape": list(shape),
+                    "dtype": dtype,
+                    "device": device,
+                    "requires_grad": requires_grad,
+                    "count": data["count"],
+                    "mb": round(data["bytes"] / (1024 * 1024), 1),
+                }
+                for (shape, dtype, device, requires_grad), data in top
+            ],
+        }
+    except Exception as exc:
+        snapshot["error"] = str(exc)
+    return snapshot
+
+
+def _format_tensor_snapshot(snapshot):
+    if not snapshot:
+        return "unavailable"
+    top = snapshot.get("top") or []
+    top_text = ";".join(
+        f"shape={item.get('shape')},dtype={item.get('dtype')},device={item.get('device')},count={item.get('count')},mb={item.get('mb')}"
+        for item in top
+    )
+    return f"count={snapshot.get('count')},total_mb={snapshot.get('total_mb')},top=[{top_text}]"
+
+
 def _release_python_and_torch_memory(unload_models: bool = False):
     notes = []
     before = _memory_snapshot()
@@ -178,8 +231,10 @@ def _release_python_and_torch_memory(unload_models: bool = False):
     gc.collect()
     notes.append(_empty_windows_working_set())
     after = _memory_snapshot()
+    tensors_after = _live_torch_tensor_snapshot()
     notes.append(f"mem_before[{_format_memory_snapshot(before)}]")
     notes.append(f"mem_after[{_format_memory_snapshot(after)}]")
+    notes.append(f"live_tensors_after[{_format_tensor_snapshot(tensors_after)}]")
     return notes
 
 
@@ -200,22 +255,34 @@ def _install_upscale_prompt_cleanup_patch():
     original_execute_async = executor_cls.execute_async
 
     async def execute_async_with_upscale_cleanup(self, prompt, prompt_id, extra_data={}, execute_outputs=[]):
+        is_upscale_chunk = isinstance(extra_data, dict) and extra_data.get("shezw_upscale_chunk")
+        original_cache_type = getattr(self, "cache_type", None)
+        chunk_cache_notes = []
+        if is_upscale_chunk:
+            try:
+                none_cache_type = getattr(execution.CacheType, "NONE")
+                self.cache_type = none_cache_type
+                self.caches = cache_set_cls(cache_type=none_cache_type, cache_args=self.cache_args)
+                chunk_cache_notes.append("chunk_cache_type_none")
+            except Exception as exc:
+                chunk_cache_notes.append(f"chunk_cache_type_none_failed:{exc}")
         try:
             return await original_execute_async(self, prompt, prompt_id, extra_data, execute_outputs)
         finally:
-            if not isinstance(extra_data, dict) or not extra_data.get("shezw_upscale_chunk"):
+            if not is_upscale_chunk:
                 return
             unload_models = bool(extra_data.get("shezw_unload_models_after_prompt", True))
             try:
                 # This is the important part: drop the executor-owned output/object
                 # caches that hold the large IMAGE tensors for this upscale chunk.
-                self.caches = cache_set_cls(cache_type=self.cache_type, cache_args=self.cache_args)
+                self.cache_type = original_cache_type
+                self.caches = cache_set_cls(cache_type=original_cache_type, cache_args=self.cache_args)
                 notes = _release_python_and_torch_memory(unload_models=unload_models)
                 log.info(
                     "[Shezw Upscale] Cleared executor caches after chunk prompt %s; unload_models=%s; notes=%s",
                     prompt_id,
                     unload_models,
-                    ",".join(notes),
+                    ",".join(chunk_cache_notes + notes),
                 )
             except Exception as exc:
                 log.warning("[Shezw Upscale] Executor cache cleanup failed after prompt %s: %s", prompt_id, exc)
@@ -416,14 +483,16 @@ async def shezw_upscale_cleanup(request):
             cleanup_notes.append(f"torch_cleanup_failed:{exc}")
         cleanup_notes.append(_empty_windows_working_set())
         memory_after = _memory_snapshot()
+        tensors_after = _live_torch_tensor_snapshot()
         log.info(
-            "[Shezw Upscale] Cleanup endpoint prompt=%s unload_models=%s wait=%ss notes=%s mem_before=%s mem_after=%s",
+            "[Shezw Upscale] Cleanup endpoint prompt=%s unload_models=%s wait=%ss notes=%s mem_before=%s mem_after=%s live_tensors_after=%s",
             prompt_id,
             unload_models,
             wait_seconds,
             ",".join(cleanup_notes),
             _format_memory_snapshot(memory_before),
             _format_memory_snapshot(memory_after),
+            _format_tensor_snapshot(tensors_after),
         )
 
         return web.json_response({
@@ -434,6 +503,7 @@ async def shezw_upscale_cleanup(request):
             "notes": cleanup_notes,
             "memory_before": memory_before,
             "memory_after": memory_after,
+            "live_tensors_after": tensors_after,
         })
     except Exception as exc:
         return web.json_response({"ok": False, "error": str(exc)}, status=400)

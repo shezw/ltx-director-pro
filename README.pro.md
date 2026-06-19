@@ -138,7 +138,7 @@ pro-workflows/upscale.json
 - 分段输出前缀默认是 `video/upscale-segment_00000...`。
 - 全部分段完成后用 ffmpeg 拼接成 `video/upscale-merged_*.mp4`。
 
-分段秒数可以在 `Shezw Upscale Chunker` 节点的 `chunk_seconds` 里改。实际每次提交还会受 `max_frames_per_segment` 限制，默认 `24` 帧，避免高分辨率 upscale 一次性创建过大的输出 tensor。
+分段秒数可以在 `Shezw Upscale Chunker` 节点的 `chunk_seconds` 里改。
 
 ### Upscale 分段内存释放记录
 
@@ -147,12 +147,12 @@ pro-workflows/upscale.json
 当前处理策略：
 
 - `Queue Chunks` 提交每个分段 prompt 时会额外标记 `shezw_upscale_chunk=true`。
-- 只有带这个标记的分段 prompt 完成后，后端才会清掉 ComfyUI `PromptExecutor` 的 output/object cache。
+- 只有带这个标记的分段 prompt 才会临时禁用 ComfyUI executor output cache，避免大批量 `IMAGE` tensor 进入跨节点/跨 prompt 的 RAM cache。
+- 分段 prompt 完成后，后端会恢复原 cache 类型，并重建空的 `PromptExecutor` output/object cache。
 - 每段完成后会主动 `unload_models`、触发 ComfyUI model cleanup、`torch.cuda.empty_cache()` 和 Python `gc.collect()`。
 - 前端会先读取该分段的 history 输出并记录视频文件，再删除该 prompt history 并继续下一段。
-- 每段的 `frame_load_cap` 现在会取 `chunk_seconds * fps` 和 `max_frames_per_segment` 的较小值，默认最多 24 帧，降低单次 `ImageUpscaleWithModel` 的 CPU tensor 峰值。
 
-2026-06-19 现场日志确认：分段清理钩子已经安装并执行，但 `ImageUpscaleWithModel` 在一个 239 帧、2560x1440 输出段里尝试一次性申请约 `10572595200` bytes CPU 内存。这个峰值来自当前 ComfyUI upscale 节点会为整段 batch 预分配完整输出 tensor，不是单纯的 prompt cache 未清理。默认 24 帧上限用于先避开这个峰值；如果后续仍然观察到内存持续上涨，再继续排查 `VHS_LoadVideo`、`ImageUpscaleWithModel` 或 `VHS_VideoCombine` 内部是否还有额外引用残留，或改用 VHS `BatchManager` 做更深的流式处理。
+2026-06-19 现场日志确认：分段清理钩子已经安装并执行，但分段完成后的进程内存仍会继续增长。排查重点不再是减小分段，而是阻止 `VHS_LoadVideo`、`ImageUpscaleWithModel`、`ImageScale` 产生的大 tensor 进入 ComfyUI executor/cache，并用 live tensor 日志确认清理后是否仍有大 tensor 引用。
 
 ## 镜头控制
 
