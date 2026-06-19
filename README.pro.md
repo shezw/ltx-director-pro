@@ -152,7 +152,7 @@ pro-workflows/upscale.json
 - 每段完成后会主动 `unload_models`、触发 ComfyUI model cleanup、`torch.cuda.empty_cache()` 和 Python `gc.collect()`。
 - 前端会先读取该分段的 history 输出并记录视频文件，再删除该 prompt history 并继续下一段。
 
-2026-06-19 现场日志确认：分段清理钩子已经安装并执行，`CacheType.NONE` 生效，清理后的 live `torch.Tensor` 统计为 `0MB`。加入 Windows native trim 后，`_heapmin`、`HeapCompact`、`SetProcessWorkingSetSize` 和 `EmptyWorkingSet` 都能执行，`rss/uss` 会明显下降；但 `vms` 仍会逐段增长，用户现场观察仍有约 2GB/段不干净。后端日志因此继续补充 Windows 原生 `GetProcessMemoryInfo` 指标：`win_working_set_mb`、`win_pagefile_mb`、`win_private_mb`。后续判断以 `win_private_mb/PagefileUsage` 为准，而不是只看被 working-set trim 影响很大的 `rss/uss` 或只代表地址空间保留的 `vms`。
+2026-06-19 现场日志确认：分段清理钩子已经安装并执行，`CacheType.NONE` 生效。加入 Windows native trim 后，`_heapmin`、`HeapCompact`、`SetProcessWorkingSetSize` 和 `EmptyWorkingSet` 都能执行，`rss/uss` 会明显下降；但 Windows 原生 `GetProcessMemoryInfo` 显示 `win_private_mb/PagefileUsage` 仍随每段增加，说明是 ComfyUI 进程私有提交内存没有释放，不是单纯 working set 显示问题。后端继续用 weakref 追踪 upscale chunk 执行期间各节点输出 tensor，日志字段 `tracked_tensors_after` 会列出清理后仍存活的大 tensor 来源节点、shape、大小和 referrer 摘要；同时记录 `comfy_pinned_mb` 以确认是否是 Comfy/PyTorch pinned host memory 池在增长。如果没有大 tensor 存活且 pinned memory 不增长，但 `win_private_mb` 仍增长，则问题更偏向 PyTorch/CRT/native allocator 内部保留。
 
 ## 镜头控制
 

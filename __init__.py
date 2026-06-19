@@ -22,9 +22,13 @@ import tempfile
 import asyncio
 import gc
 import logging
+import contextvars
+import weakref
 
 
 log = logging.getLogger(__name__)
+_upscale_tracking_prompt_id = contextvars.ContextVar("shezw_upscale_tracking_prompt_id", default=None)
+_tracked_upscale_tensors = []
 
 
 def _safe_output_prefix(prefix: str) -> str:
@@ -236,6 +240,17 @@ def _memory_snapshot():
     snapshot.update(_windows_process_memory_snapshot())
 
     try:
+        import comfy.model_management as model_management
+        total_pinned = getattr(model_management, "TOTAL_PINNED_MEMORY", None)
+        max_pinned = getattr(model_management, "MAX_PINNED_MEMORY", None)
+        if total_pinned is not None:
+            snapshot["comfy_pinned_mb"] = round(total_pinned / (1024 * 1024), 1)
+        if max_pinned is not None:
+            snapshot["comfy_max_pinned_mb"] = round(max_pinned / (1024 * 1024), 1)
+    except Exception:
+        pass
+
+    try:
         import torch
         if torch.cuda.is_available():
             snapshot["cuda_allocated_mb"] = round(torch.cuda.memory_allocated() / (1024 * 1024), 1)
@@ -259,6 +274,8 @@ def _format_memory_snapshot(snapshot):
         "win_pagefile_mb",
         "win_peak_pagefile_mb",
         "win_private_mb",
+        "comfy_pinned_mb",
+        "comfy_max_pinned_mb",
         "cuda_allocated_mb",
         "cuda_reserved_mb",
         "win_mem_error",
@@ -320,6 +337,121 @@ def _format_tensor_snapshot(snapshot):
     return f"count={snapshot.get('count')},total_mb={snapshot.get('total_mb')},top=[{top_text}]"
 
 
+def _tensor_mb(tensor) -> float:
+    try:
+        return round(tensor.numel() * tensor.element_size() / (1024 * 1024), 1)
+    except Exception:
+        return 0.0
+
+
+def _record_upscale_tensors(label: str, value, prompt_id=None):
+    if prompt_id is None:
+        prompt_id = _upscale_tracking_prompt_id.get()
+    if not prompt_id:
+        return
+    try:
+        import torch
+    except Exception:
+        return
+
+    seen = set()
+
+    def visit(item, path=""):
+        item_id = id(item)
+        if item_id in seen:
+            return
+        seen.add(item_id)
+        try:
+            if isinstance(item, torch.Tensor):
+                _tracked_upscale_tensors.append({
+                    "prompt_id": prompt_id,
+                    "label": f"{label}{path}",
+                    "ref": weakref.ref(item),
+                    "shape": tuple(item.shape),
+                    "dtype": str(item.dtype),
+                    "device": str(item.device),
+                    "mb": _tensor_mb(item),
+                })
+                return
+        except Exception:
+            return
+
+        if isinstance(item, (list, tuple)):
+            for index, child in enumerate(item):
+                visit(child, f"{path}/{index}")
+        elif isinstance(item, dict):
+            for key, child in item.items():
+                visit(child, f"{path}/{key}")
+
+    visit(value)
+
+
+def _format_referrers(obj, limit: int = 5) -> str:
+    parts = []
+    try:
+        referrers = gc.get_referrers(obj)
+    except Exception as exc:
+        return f"referrers_error:{exc}"
+    for referrer in referrers:
+        if referrer is _tracked_upscale_tensors:
+            continue
+        if isinstance(referrer, dict):
+            keys = []
+            try:
+                keys = [str(key) for key in list(referrer.keys())[:6]]
+            except Exception:
+                pass
+            parts.append(f"dict(keys={keys})")
+        elif isinstance(referrer, (list, tuple, set)):
+            parts.append(f"{type(referrer).__name__}(len={len(referrer)})")
+        else:
+            parts.append(type(referrer).__name__)
+        if len(parts) >= limit:
+            break
+    return "|".join(parts)
+
+
+def _tracked_upscale_tensor_snapshot(prompt_id=None, limit: int = 8, include_referrers: bool = False):
+    alive = []
+    kept = []
+    for record in _tracked_upscale_tensors:
+        tensor = record["ref"]()
+        if tensor is None:
+            continue
+        kept.append(record)
+        if prompt_id is None or record.get("prompt_id") == prompt_id:
+            alive.append((record, tensor))
+
+    _tracked_upscale_tensors[:] = kept[-200:]
+    alive.sort(key=lambda item: item[0].get("mb", 0), reverse=True)
+    total_mb = round(sum(record.get("mb", 0) for record, _ in alive), 1)
+    top = []
+    for record, tensor in alive[:limit]:
+        item = {
+            "prompt_id": record.get("prompt_id"),
+            "label": record.get("label"),
+            "shape": list(record.get("shape") or ()),
+            "dtype": record.get("dtype"),
+            "device": record.get("device"),
+            "mb": record.get("mb"),
+        }
+        if include_referrers:
+            item["referrers"] = _format_referrers(tensor)
+        top.append(item)
+    return {"count": len(alive), "total_mb": total_mb, "top": top}
+
+
+def _format_tracked_tensor_snapshot(snapshot):
+    if not snapshot:
+        return "unavailable"
+    top = snapshot.get("top") or []
+    top_text = ";".join(
+        f"label={item.get('label')},shape={item.get('shape')},dtype={item.get('dtype')},device={item.get('device')},mb={item.get('mb')},referrers={item.get('referrers', '')}"
+        for item in top
+    )
+    return f"count={snapshot.get('count')},total_mb={snapshot.get('total_mb')},top=[{top_text}]"
+
+
 def _release_python_and_torch_memory(unload_models: bool = False):
     notes = []
     before = _memory_snapshot()
@@ -372,11 +504,27 @@ def _install_upscale_prompt_cleanup_patch():
         return
 
     original_execute_async = executor_cls.execute_async
+    original_get_output_data = getattr(execution, "get_output_data", None)
+
+    if original_get_output_data is not None and not getattr(execution, "_shezw_upscale_tensor_tracking_patch", False):
+        async def get_output_data_with_upscale_tracking(*args, **kwargs):
+            result = await original_get_output_data(*args, **kwargs)
+            prompt_id = _upscale_tracking_prompt_id.get()
+            if prompt_id and isinstance(result, tuple) and len(result) > 0:
+                unique_id = args[1] if len(args) > 1 else kwargs.get("unique_id", "unknown")
+                obj = args[2] if len(args) > 2 else kwargs.get("obj")
+                class_name = obj.__class__.__name__ if obj is not None else "unknown"
+                _record_upscale_tensors(f"node={unique_id}:class={class_name}:output", result[0], prompt_id=prompt_id)
+            return result
+
+        execution.get_output_data = get_output_data_with_upscale_tracking
+        execution._shezw_upscale_tensor_tracking_patch = True
 
     async def execute_async_with_upscale_cleanup(self, prompt, prompt_id, extra_data={}, execute_outputs=[]):
         is_upscale_chunk = isinstance(extra_data, dict) and extra_data.get("shezw_upscale_chunk")
         original_cache_type = getattr(self, "cache_type", None)
         chunk_cache_notes = []
+        tracking_token = None
         if is_upscale_chunk:
             try:
                 none_cache_type = getattr(execution.CacheType, "NONE")
@@ -385,6 +533,7 @@ def _install_upscale_prompt_cleanup_patch():
                 chunk_cache_notes.append("chunk_cache_type_none")
             except Exception as exc:
                 chunk_cache_notes.append(f"chunk_cache_type_none_failed:{exc}")
+            tracking_token = _upscale_tracking_prompt_id.set(str(prompt_id))
         try:
             return await original_execute_async(self, prompt, prompt_id, extra_data, execute_outputs)
         finally:
@@ -397,6 +546,8 @@ def _install_upscale_prompt_cleanup_patch():
                 self.cache_type = original_cache_type
                 self.caches = cache_set_cls(cache_type=original_cache_type, cache_args=self.cache_args)
                 notes = _release_python_and_torch_memory(unload_models=unload_models)
+                tracked_tensors_after = _tracked_upscale_tensor_snapshot(str(prompt_id), include_referrers=True)
+                notes.append(f"tracked_tensors_after[{_format_tracked_tensor_snapshot(tracked_tensors_after)}]")
                 log.info(
                     "[Shezw Upscale] Cleared executor caches after chunk prompt %s; unload_models=%s; notes=%s",
                     prompt_id,
@@ -405,6 +556,9 @@ def _install_upscale_prompt_cleanup_patch():
                 )
             except Exception as exc:
                 log.warning("[Shezw Upscale] Executor cache cleanup failed after prompt %s: %s", prompt_id, exc)
+            finally:
+                if tracking_token is not None:
+                    _upscale_tracking_prompt_id.reset(tracking_token)
 
     executor_cls.execute_async = execute_async_with_upscale_cleanup
     executor_cls._shezw_upscale_cleanup_patch = True
@@ -603,8 +757,9 @@ async def shezw_upscale_cleanup(request):
         cleanup_notes.extend(_trim_windows_native_memory())
         memory_after = _memory_snapshot()
         tensors_after = _live_torch_tensor_snapshot()
+        tracked_tensors_after = _tracked_upscale_tensor_snapshot(str(prompt_id) if prompt_id else None, include_referrers=True)
         log.info(
-            "[Shezw Upscale] Cleanup endpoint prompt=%s unload_models=%s wait=%ss notes=%s mem_before=%s mem_after=%s live_tensors_after=%s",
+            "[Shezw Upscale] Cleanup endpoint prompt=%s unload_models=%s wait=%ss notes=%s mem_before=%s mem_after=%s live_tensors_after=%s tracked_tensors_after=%s",
             prompt_id,
             unload_models,
             wait_seconds,
@@ -612,6 +767,7 @@ async def shezw_upscale_cleanup(request):
             _format_memory_snapshot(memory_before),
             _format_memory_snapshot(memory_after),
             _format_tensor_snapshot(tensors_after),
+            _format_tracked_tensor_snapshot(tracked_tensors_after),
         )
 
         return web.json_response({
@@ -623,6 +779,7 @@ async def shezw_upscale_cleanup(request):
             "memory_before": memory_before,
             "memory_after": memory_after,
             "live_tensors_after": tensors_after,
+            "tracked_tensors_after": tracked_tensors_after,
         })
     except Exception as exc:
         return web.json_response({"ok": False, "error": str(exc)}, status=400)
