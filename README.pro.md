@@ -140,6 +140,19 @@ pro-workflows/upscale.json
 
 分段秒数可以在 `Shezw Upscale Chunker` 节点的 `chunk_seconds` 里改，默认 `30`。
 
+### Upscale 分段内存释放记录
+
+长视频 upscale 的主要内存压力来自每段解码后的大批量 `IMAGE` tensor，以及 upscaler / video combine 链路留下的中间结果。只调用 ComfyUI 的 `/free` 不一定能马上释放这些对象，因为上一段 prompt 的 executor output/object cache 仍可能持有引用。
+
+当前处理策略：
+
+- `Queue Chunks` 提交每个分段 prompt 时会额外标记 `shezw_upscale_chunk=true`。
+- 只有带这个标记的分段 prompt 完成后，后端才会清掉 ComfyUI `PromptExecutor` 的 output/object cache。
+- 每段完成后会主动 `unload_models`、触发 ComfyUI model cleanup、`torch.cuda.empty_cache()` 和 Python `gc.collect()`。
+- 前端会先读取该分段的 history 输出并记录视频文件，再删除该 prompt history 并继续下一段。
+
+这个策略优先解决“一个分段完成后内存不释放”的问题。代价是每段之间可能需要重新加载 upscaler 模型，速度会比保留模型缓存慢一些。如果后续仍然观察到内存持续上涨，再继续排查 `VHS_LoadVideo`、`ImageUpscaleWithModel` 或 `VHS_VideoCombine` 内部是否还有额外引用残留。
+
 ## 镜头控制
 
 Camera 轨道目前使用 LTX 官方明确暴露的固定镜头用法，不再允许自由输入镜头文本：

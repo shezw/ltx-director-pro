@@ -206,18 +206,17 @@ function sanitizePromptOutputs(prompt, outputNodeIds = []) {
 async function queueGraphPrompt(outputNodeIds = []) {
   if (!app?.graphToPrompt || !api) throw new Error("ComfyUI graphToPrompt API is unavailable.");
   const prompt = sanitizePromptOutputs(await app.graphToPrompt(), outputNodeIds);
-  if (typeof api.queuePrompt === "function") {
-    const queued = await api.queuePrompt(0, prompt);
-    const promptId = queued?.prompt_id || queued?.promptId || queued?.id;
-    if (promptId) return String(promptId);
-  }
   const resp = await api.fetchApi("/prompt", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       client_id: api.clientId,
       prompt: prompt.output,
-      extra_data: { extra_pnginfo: { workflow: prompt.workflow } },
+      extra_data: {
+        extra_pnginfo: { workflow: prompt.workflow },
+        shezw_upscale_chunk: true,
+        shezw_unload_models_after_prompt: true,
+      },
     }),
   });
   const data = await resp.json();
@@ -250,7 +249,7 @@ async function freeComfyMemory(promptId = null, waitSeconds = 12) {
     const cleanupResp = await api.fetchApi("/shezw/upscale/cleanup", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt_id: promptId, wait_seconds: wait, unload_models: false }),
+      body: JSON.stringify({ prompt_id: promptId, wait_seconds: wait, unload_models: true }),
     });
     if (cleanupResp.ok) return;
   } catch (err) {
@@ -273,7 +272,7 @@ async function freeComfyMemory(promptId = null, waitSeconds = 12) {
     await api.fetchApi("/free", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ unload_models: false, free_memory: true }),
+      body: JSON.stringify({ unload_models: true, free_memory: true }),
     });
   } catch (err) {
     console.warn("[Shezw Upscale Chunker] Comfy memory free request failed", err);

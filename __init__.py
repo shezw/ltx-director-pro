@@ -21,6 +21,10 @@ import subprocess
 import tempfile
 import asyncio
 import gc
+import logging
+
+
+log = logging.getLogger(__name__)
 
 
 def _safe_output_prefix(prefix: str) -> str:
@@ -83,6 +87,93 @@ def _unique_output_path(prefix: str, ext: str = ".mp4") -> tuple[str, str, str]:
         if not os.path.exists(path):
             return path, filename, subfolder
     raise RuntimeError("Could not allocate output filename")
+
+
+def _empty_windows_working_set():
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+        process = ctypes.windll.kernel32.GetCurrentProcess()
+        ctypes.windll.psapi.EmptyWorkingSet(process)
+    except Exception:
+        pass
+
+
+def _release_python_and_torch_memory(unload_models: bool = False):
+    notes = []
+    try:
+        import comfy.model_management as model_management
+        if unload_models and hasattr(model_management, "unload_all_models"):
+            model_management.unload_all_models()
+            notes.append("unload_all_models")
+        if hasattr(model_management, "cleanup_models_gc"):
+            model_management.cleanup_models_gc()
+            notes.append("cleanup_models_gc")
+        if hasattr(model_management, "soft_empty_cache"):
+            model_management.soft_empty_cache()
+            notes.append("soft_empty_cache")
+    except Exception as exc:
+        notes.append(f"comfy_cleanup_failed:{exc}")
+
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            if hasattr(torch.cuda, "ipc_collect"):
+                torch.cuda.ipc_collect()
+            notes.append("torch_cuda_empty_cache")
+    except Exception as exc:
+        notes.append(f"torch_cleanup_failed:{exc}")
+
+    gc.collect()
+    _empty_windows_working_set()
+    return notes
+
+
+def _install_upscale_prompt_cleanup_patch():
+    try:
+        import execution
+    except Exception as exc:
+        log.warning("[Shezw Upscale] Could not import ComfyUI execution module: %s", exc)
+        return
+
+    executor_cls = getattr(execution, "PromptExecutor", None)
+    cache_set_cls = getattr(execution, "CacheSet", None)
+    if executor_cls is None or cache_set_cls is None:
+        return
+    if getattr(executor_cls, "_shezw_upscale_cleanup_patch", False):
+        return
+
+    original_execute_async = executor_cls.execute_async
+
+    async def execute_async_with_upscale_cleanup(self, prompt, prompt_id, extra_data={}, execute_outputs=[]):
+        try:
+            return await original_execute_async(self, prompt, prompt_id, extra_data, execute_outputs)
+        finally:
+            if not isinstance(extra_data, dict) or not extra_data.get("shezw_upscale_chunk"):
+                return
+            unload_models = bool(extra_data.get("shezw_unload_models_after_prompt", True))
+            try:
+                # This is the important part: drop the executor-owned output/object
+                # caches that hold the large IMAGE tensors for this upscale chunk.
+                self.caches = cache_set_cls(cache_type=self.cache_type, cache_args=self.cache_args)
+                notes = _release_python_and_torch_memory(unload_models=unload_models)
+                log.info(
+                    "[Shezw Upscale] Cleared executor caches after chunk prompt %s; unload_models=%s; notes=%s",
+                    prompt_id,
+                    unload_models,
+                    ",".join(notes),
+                )
+            except Exception as exc:
+                log.warning("[Shezw Upscale] Executor cache cleanup failed after prompt %s: %s", prompt_id, exc)
+
+    executor_cls.execute_async = execute_async_with_upscale_cleanup
+    executor_cls._shezw_upscale_cleanup_patch = True
+    log.info("[Shezw Upscale] Installed per-chunk executor cache cleanup patch.")
+
+
+_install_upscale_prompt_cleanup_patch()
 
 
 @PromptServer.instance.routes.get("/shezw/long_auto/latest_tail_frame")
@@ -253,6 +344,8 @@ async def shezw_upscale_cleanup(request):
             import comfy.model_management as model_management
             if hasattr(model_management, "soft_empty_cache"):
                 model_management.soft_empty_cache()
+            if hasattr(model_management, "cleanup_models_gc"):
+                model_management.cleanup_models_gc()
             if unload_models and hasattr(model_management, "unload_all_models"):
                 model_management.unload_all_models()
             cleanup_notes.append("comfy_model_management")
@@ -268,6 +361,7 @@ async def shezw_upscale_cleanup(request):
                 cleanup_notes.append("torch_cuda")
         except Exception as exc:
             cleanup_notes.append(f"torch_cleanup_failed:{exc}")
+        _empty_windows_working_set()
 
         return web.json_response({
             "ok": True,
