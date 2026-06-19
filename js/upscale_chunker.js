@@ -81,6 +81,19 @@ function getWidgetValue(node, name, fallbackIndex = -1, fallback = null) {
   return widget ? widget.value : fallback;
 }
 
+function getNumberWidgetValue(node, name, fallbackIndex, fallback, { min = -Infinity, max = Infinity, integer = false } = {}) {
+  const raw = getWidgetValue(node, name, fallbackIndex, fallback);
+  const text = typeof raw === "string" ? raw.trim() : raw;
+  let value = text === "" || text === null || text === undefined ? fallback : Number(text);
+  if (!Number.isFinite(value)) value = fallback;
+  if (integer) value = Math.floor(value);
+  value = Math.min(max, Math.max(min, value));
+  if (raw !== value) {
+    try { setWidgetValue(node, name, value, fallbackIndex); } catch (_) { }
+  }
+  return value;
+}
+
 function normalizeVideoRef(value, fallback = {}) {
   if (!value) return null;
   const videoExtRE = /\.(mp4|webm|mov|mkv)$/i;
@@ -327,11 +340,11 @@ app.registerExtension({
         button.disabled = true;
         const restore = [];
         try {
-          const chunkSeconds = Math.max(3, Number(getWidgetValue(node, "chunk_seconds", 0, 30)) || 30);
+          const chunkSeconds = getNumberWidgetValue(node, "chunk_seconds", 0, 10, { min: 3, max: 300, integer: true });
           const segmentPrefix = `${getWidgetValue(node, "segment_prefix", 1, "video/upscale-segment") || "video/upscale-segment"}`.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
           const outputPrefix = `${getWidgetValue(node, "output_prefix", 2, "video/upscale-merged") || "video/upscale-merged"}`.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
-          const cleanupWaitSeconds = Math.max(0, Math.min(60, Number(getWidgetValue(node, "cleanup_wait_seconds", 3, 12)) || 0));
-          const requestedStartSegment = Math.max(0, Math.floor(Number(getWidgetValue(node, "start_segment_index", 4, 0)) || 0));
+          const cleanupWaitSeconds = getNumberWidgetValue(node, "cleanup_wait_seconds", 3, 12, { min: 0, max: 60, integer: true });
+          const requestedStartSegment = getNumberWidgetValue(node, "start_segment_index", 4, 0, { min: 0, max: 100000, integer: true });
           const { loadNode, combineNode } = findUpscaleNodes();
 
           const video = `${getWidgetValue(loadNode, "video", 0, "") || ""}`;
@@ -366,10 +379,10 @@ app.registerExtension({
             console.warn("[Shezw Upscale Chunker] missing previous segments", existing.missing);
           }
 
-          setStatus(`Preparing memory cleanup before chunks ${startSegment}-${totalChunks - 1} (${chunkSeconds}s each).`);
+          setStatus(`Preparing memory cleanup before chunks ${startSegment}-${totalChunks - 1} (${chunkSeconds}s each, cleanup ${cleanupWaitSeconds}s).`);
           await freeComfyMemory(null, Math.min(cleanupWaitSeconds, 5));
 
-          setStatus(`Queueing chunks ${startSegment}-${totalChunks - 1} of ${totalChunks} (${totalFrames} frames total).`);
+          setStatus(`Queueing chunks ${startSegment}-${totalChunks - 1} of ${totalChunks} (${totalFrames} frames total, cleanup ${cleanupWaitSeconds}s).`);
           const videos = [...existing.found];
           for (let i = startSegment; i < totalChunks; i++) {
             const start = i * chunkFrames;
