@@ -18,9 +18,20 @@ function setWidgetValue(node, name, value) {
   return true;
 }
 
+function nodeProp(node, name, fallback = "") {
+  if (node?.properties && node.properties[name] !== undefined) return node.properties[name];
+  return widgetValue(node, name, fallback);
+}
+
+function setNodeProp(node, name, value) {
+  if (!node) return;
+  if (!node.properties) node.properties = {};
+  node.properties[name] = value;
+}
+
 function parseJson(text, fallback) {
   try {
-    const value = JSON.parse(text || "");
+    const value = typeof text === "string" ? JSON.parse(text || "") : text;
     return value && typeof value === "object" ? value : fallback;
   } catch (_) {
     return fallback;
@@ -28,17 +39,19 @@ function parseJson(text, fallback) {
 }
 
 function getStoryNode() {
-  return (app?.graph?._nodes || []).find((node) => node.type === "ShezwStoryScript");
+  return (app?.graph?._nodes || []).find((node) => node.type === "ShezwMetaInfo")
+    || (app?.graph?._nodes || []).find((node) => node.type === "ShezwStoryScript");
 }
 
 function getGlobalPrefix() {
   if (typeof window.shezwGetGlobalPrefix === "function") return window.shezwGetGlobalPrefix();
-  const node = (app?.graph?._nodes || []).find((n) => n.type === "ShezwGlobalPrefix");
+  const node = (app?.graph?._nodes || []).find((n) => n.type === "ShezwMetaInfo")
+    || (app?.graph?._nodes || []).find((n) => n.type === "ShezwGlobalPrefix");
   return `${widgetValue(node, "global_prefix", "") || ""}`.trim();
 }
 
 function getAllowedStruct(storyNode) {
-  const raw = widgetValue(storyNode, "ss_struct", "{}");
+  const raw = nodeProp(storyNode, "ss_struct", "{}");
   const parsed = parseJson(raw, {});
   return Array.isArray(parsed.fields) ? parsed : { fields: [] };
 }
@@ -60,7 +73,7 @@ function getAllowedWidgets(struct, node) {
 
 function collectStoryScript(storyNode) {
   if (typeof window.shezwApplyGlobalPrefixToGraph === "function") window.shezwApplyGlobalPrefixToGraph();
-  const workflowId = `${widgetValue(storyNode, "workflow_id", "ltx-director-pro") || "ltx-director-pro"}`.trim();
+  const workflowId = `${nodeProp(storyNode, "workflow_id", "ltx-director-pro") || "ltx-director-pro"}`.trim();
   const struct = getAllowedStruct(storyNode);
   const nodes = [];
   for (const node of app?.graph?._nodes || []) {
@@ -103,16 +116,19 @@ function applyStoryScript(story, storyNode) {
     }
   }
   if (story.global_prefix) {
-    const prefixNode = nodeList.find((node) => node.type === "ShezwGlobalPrefix");
+    const prefixNode = nodeList.find((node) => node.type === "ShezwMetaInfo")
+      || nodeList.find((node) => node.type === "ShezwGlobalPrefix");
     setWidgetValue(prefixNode, "global_prefix", story.global_prefix);
   }
+  setNodeProp(storyNode, "story_script", story);
   setWidgetValue(storyNode, "story_script", JSON.stringify(story, null, 2));
   if (typeof window.shezwApplyGlobalPrefixToGraph === "function") window.shezwApplyGlobalPrefixToGraph();
   app.graph?.setDirtyCanvas(true, true);
 }
 
 function storyFilename(storyNode, story) {
-  const raw = `${widgetValue(storyNode, "script_name", "") || story?.workflow_id || "story"}`.trim() || "story";
+  const workflowId = `${nodeProp(storyNode, "workflow_id", story?.workflow_id || "story") || "story"}`.trim();
+  const raw = `${nodeProp(storyNode, "script_name", "") || workflowId || story?.workflow_id || "story"}`.trim() || "story";
   if (raw.endsWith("-ss.json")) return raw;
   return `${raw.replace(/\.json$/i, "")}-ss.json`;
 }
@@ -132,6 +148,7 @@ function downloadJson(filename, data) {
 async function saveStoryScript(storyNode, exportDir = "") {
   const story = collectStoryScript(storyNode);
   const filename = storyFilename(storyNode, story);
+  setNodeProp(storyNode, "story_script", story);
   setWidgetValue(storyNode, "story_script", JSON.stringify(story, null, 2));
   const resp = await api.fetchApi("/shezw/story_script/save", {
     method: "POST",
@@ -147,103 +164,156 @@ async function saveStoryScript(storyNode, exportDir = "") {
   return data;
 }
 
+function hideWidget(node, name) {
+  const widget = getWidget(node, name);
+  if (!widget) return;
+  widget.type = "hidden";
+  widget.computeSize = () => [0, -4];
+}
+
+function buildMetaPanel(node) {
+  const wrap = document.createElement("div");
+  Object.assign(wrap.style, {
+    display: "flex",
+    gap: "8px",
+    flexWrap: "wrap",
+    alignItems: "center",
+    width: "100%",
+  });
+
+  const status = document.createElement("div");
+  Object.assign(status.style, {
+    width: "100%",
+    color: "#aaa",
+    fontSize: "12px",
+    minHeight: "18px",
+  });
+  status.textContent = "Meta Info";
+
+  const makeButton = (label) => {
+    const btn = document.createElement("button");
+    btn.textContent = label;
+    Object.assign(btn.style, {
+      border: "1px solid #555",
+      background: "#202020",
+      color: "#f2f2f2",
+      borderRadius: "5px",
+      padding: "8px 14px",
+      cursor: "pointer",
+      fontSize: "13px",
+      minHeight: "36px",
+      minWidth: "72px",
+    });
+    return btn;
+  };
+
+  const genBtn = makeButton("Gen");
+  const applyBtn = makeButton("Apply");
+  const importBtn = makeButton("Import");
+  const storeBtn = makeButton("Store");
+  const exportBtn = makeButton("Export");
+  wrap.append(genBtn, applyBtn, importBtn, storeBtn, exportBtn, status);
+
+  genBtn.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    const widget = getWidget(node, "global_prefix") || node.widgets?.[0];
+    if (!widget) return;
+    const next = typeof window.shezwGenerateGlobalPrefixId === "function"
+      ? window.shezwGenerateGlobalPrefixId()
+      : `${Date.now()}`;
+    widget.value = next;
+    if (typeof widget.callback === "function") widget.callback(next);
+    if (typeof window.shezwApplyGlobalPrefixToGraph === "function") window.shezwApplyGlobalPrefixToGraph();
+    status.textContent = `Prefix ${next}`;
+  });
+
+  applyBtn.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    const prefix = typeof window.shezwApplyGlobalPrefixToGraph === "function"
+      ? window.shezwApplyGlobalPrefixToGraph()
+      : getGlobalPrefix();
+    status.textContent = prefix ? `Applied ${prefix}` : "Prefix is empty";
+  });
+
+  importBtn.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json";
+    input.addEventListener("change", async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      try {
+        const story = JSON.parse(await file.text());
+        applyStoryScript(story, node);
+        setNodeProp(node, "script_name", file.name);
+        status.textContent = `Imported ${file.name}`;
+      } catch (err) {
+        console.error("[Shezw MetaInfo] import failed", err);
+        status.textContent = `Import failed: ${err.message || err}`;
+      }
+    });
+    input.click();
+  });
+
+  storeBtn.addEventListener("click", async (ev) => {
+    ev.stopPropagation();
+    storeBtn.disabled = true;
+    try {
+      const data = await saveStoryScript(node, "");
+      status.textContent = `Stored ${data.filename}`;
+    } catch (err) {
+      console.error("[Shezw MetaInfo] store failed", err);
+      status.textContent = `Store failed: ${err.message || err}`;
+    } finally {
+      storeBtn.disabled = false;
+    }
+  });
+
+  exportBtn.addEventListener("click", async (ev) => {
+    ev.stopPropagation();
+    exportBtn.disabled = true;
+    try {
+      const story = collectStoryScript(node);
+      const filename = storyFilename(node, story);
+      const exportDir = `${nodeProp(node, "export_dir", "") || ""}`.trim();
+      if (exportDir) {
+        const data = await saveStoryScript(node, exportDir);
+        status.textContent = `Exported ${data.filename}`;
+      } else {
+        setNodeProp(node, "story_script", story);
+        setWidgetValue(node, "story_script", JSON.stringify(story, null, 2));
+        downloadJson(filename, story);
+        status.textContent = `Downloaded ${filename}`;
+      }
+    } catch (err) {
+      console.error("[Shezw MetaInfo] export failed", err);
+      status.textContent = `Export failed: ${err.message || err}`;
+    } finally {
+      exportBtn.disabled = false;
+    }
+  });
+
+  return wrap;
+}
+
 app.registerExtension({
   name: "Shezw.StoryScript",
   async beforeRegisterNodeDef(nodeType, nodeData) {
-    if (nodeData.name !== "ShezwStoryScript") return;
+    if (nodeData.name !== "ShezwStoryScript" && nodeData.name !== "ShezwMetaInfo") return;
     const onNodeCreated = nodeType.prototype.onNodeCreated;
     nodeType.prototype.onNodeCreated = function () {
       const r = onNodeCreated ? onNodeCreated.apply(this, arguments) : undefined;
       const node = this;
-
-      const wrap = document.createElement("div");
-      Object.assign(wrap.style, { display: "flex", gap: "6px", flexWrap: "wrap", width: "100%" });
-      const status = document.createElement("div");
-      Object.assign(status.style, { width: "100%", color: "#aaa", fontSize: "11px" });
-      status.textContent = "Story Script";
-
-      const makeButton = (label) => {
-        const btn = document.createElement("button");
-        btn.textContent = label;
-        Object.assign(btn.style, {
-          border: "1px solid #444",
-          background: "#222",
-          color: "#eee",
-          borderRadius: "4px",
-          padding: "5px 9px",
-          cursor: "pointer",
-          fontSize: "11px",
-        });
-        return btn;
-      };
-
-      const importBtn = makeButton("Import");
-      const storeBtn = makeButton("Store");
-      const exportBtn = makeButton("Export");
-      wrap.append(importBtn, storeBtn, exportBtn, status);
-
-      importBtn.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        const input = document.createElement("input");
-        input.type = "file";
-        input.accept = ".json";
-        input.addEventListener("change", async () => {
-          const file = input.files?.[0];
-          if (!file) return;
-          try {
-            const story = JSON.parse(await file.text());
-            applyStoryScript(story, node);
-            setWidgetValue(node, "script_name", file.name);
-            status.textContent = `Imported ${file.name}`;
-          } catch (err) {
-            console.error("[Shezw StoryScript] import failed", err);
-            status.textContent = `Import failed: ${err.message || err}`;
-          }
-        });
-        input.click();
-      });
-
-      storeBtn.addEventListener("click", async (ev) => {
-        ev.stopPropagation();
-        storeBtn.disabled = true;
-        try {
-          const data = await saveStoryScript(node, "");
-          status.textContent = `Stored ${data.filename}`;
-        } catch (err) {
-          console.error("[Shezw StoryScript] store failed", err);
-          status.textContent = `Store failed: ${err.message || err}`;
-        } finally {
-          storeBtn.disabled = false;
-        }
-      });
-
-      exportBtn.addEventListener("click", async (ev) => {
-        ev.stopPropagation();
-        exportBtn.disabled = true;
-        try {
-          const story = collectStoryScript(node);
-          const filename = storyFilename(node, story);
-          const exportDir = `${widgetValue(node, "export_dir", "") || ""}`.trim();
-          if (exportDir) {
-            const data = await saveStoryScript(node, exportDir);
-            status.textContent = `Exported ${data.filename}`;
-          } else {
-            setWidgetValue(node, "story_script", JSON.stringify(story, null, 2));
-            downloadJson(filename, story);
-            status.textContent = `Downloaded ${filename}`;
-          }
-        } catch (err) {
-          console.error("[Shezw StoryScript] export failed", err);
-          status.textContent = `Export failed: ${err.message || err}`;
-        } finally {
-          exportBtn.disabled = false;
-        }
-      });
+      for (const name of ["workflow_id", "script_name", "ss_struct", "story_script", "export_dir"]) {
+        hideWidget(node, name);
+      }
+      const wrap = buildMetaPanel(node);
 
       setTimeout(() => {
-        const domWidget = node.addDOMWidget("story_script_tools", "div", wrap, { serialize: false });
-        domWidget.computeSize = () => [340, 60];
-        if (node.size[0] < 420) node.size[0] = 420;
+        const domWidget = node.addDOMWidget("meta_info_tools", "div", wrap, { serialize: false });
+        domWidget.computeSize = () => [460, 82];
+        if (node.size[0] < 520) node.size[0] = 520;
         app.graph?.setDirtyCanvas(true, true);
       }, 50);
       return r;

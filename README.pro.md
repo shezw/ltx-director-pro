@@ -22,15 +22,17 @@ pro-workflows/ltx-director-pro.json
 
 | 文件 | 用途 | 状态 |
 |---|---|---|
-| `pro-workflows/ltx-director-pro.json` | 主入口。Director Pro + Long Auto 合并版，双控制视频、参考图、关键帧、脚本导入导出、全局 prefix、分段 Continue / Re-gen。 | 推荐 |
-| `pro-workflows/ltx-director-pro-lip-sync.json` | 对口型：图 + 音频生成同长度视频，带全局 prefix 和 story script。 | 可用 |
-| `pro-workflows/ltx-director-pro-upscale.json` | 视频高清放大；支持分段 upscale 后自动拼接，带全局 prefix 和 story script。 | 可用 |
+| `pro-workflows/ltx-director-pro.json` | 主入口。Director Pro + Long Auto 合并版，双控制视频、参考图、关键帧、脚本导入导出、Meta Info、分段 Continue / Re-gen。 | 推荐 |
+| `pro-workflows/ltx-director-pro-lip-sync.json` | 对口型：图 + 音频生成同长度视频，带 Meta Info 和 story script。 | 可用 |
+| `pro-workflows/ltx-director-pro-upscale.json` | 视频高清放大；支持分段 upscale 后自动拼接，带 Meta Info 和 story script。 | 可用 |
 旧 `long-auto.json` / `pro-console.json` 已合并为 `ltx-director-pro.json`；旧 `lip-sync.json` / `upscale.json` 已改名为带 `ltx-director-pro-` 前缀的入口；旧单路 `camera.json` 已删除，运镜/动作控制统一收敛到 `ltx-director-pro.json`。
 
-所有新版工作流都包含两个通用节点：
+所有新版工作流都包含一个 `Meta Info` 面板：
 
-- `GLOBAL PREFIX`：输入每次生成的全局 ID。`Gen` 会生成数字 ID，格式为 `YYYYMMDDHHMM` + 4 位随机数；`Apply` 会把当前图里 `filename_prefix`、`segment_prefix`、`output_prefix` 统一改到 `video/<ID>/...`，普通 Queue 和 `Queue Chunks` 都会自动应用。
-- `STORY SCRIPT`：导入、存储、导出 `*-ss.json`。它只保存内容相关字段，例如 Director 时间线、关键帧、参考图、控制视频、音频、裁切、时长、分辨率等，不保存整个 Comfy workflow。节点内的 `ss_struct` 描述当前工作流哪些字段会参与导入/导出。
+- 只显示全局 prefix 输入框和 `Gen` / `Apply` / `Import` / `Store` / `Export` 按钮。
+- `Gen` 会生成数字 ID，格式为 `YYYYMMDDHHMM` + 4 位随机数；`Apply` 会把当前图里 `filename_prefix`、`segment_prefix`、`output_prefix` 统一改到 `video/<ID>/...`，普通 Queue 和 `Queue Chunks` 都会自动应用。
+- `Import` / `Store` / `Export` 处理 `*-ss.json`。它只保存内容相关字段，例如 Director 时间线、关键帧、参考图、控制视频、音频、裁切、时长、分辨率等，不保存整个 Comfy workflow。
+- `workflow_id`、默认文件名、`ss_struct`、脚本缓存和 export 目录都保存在 workflow JSON 的节点属性里，不在 UI 上显示。
 
 ## Long Auto
 

@@ -15,7 +15,8 @@ function getWidget(node, name) {
 }
 
 function getGlobalPrefixNode() {
-  return (app?.graph?._nodes || []).find((node) => node.type === "ShezwGlobalPrefix");
+  return (app?.graph?._nodes || []).find((node) => node.type === "ShezwMetaInfo")
+    || (app?.graph?._nodes || []).find((node) => node.type === "ShezwGlobalPrefix");
 }
 
 function getGlobalPrefix() {
@@ -44,7 +45,7 @@ export function applyGlobalPrefixToGraph() {
   if (!globalPrefix) return "";
   const prefixWidgetNames = new Set(["filename_prefix", "segment_prefix", "output_prefix"]);
   for (const node of app?.graph?._nodes || []) {
-    if (node.type === "ShezwGlobalPrefix" || node.type === "ShezwStoryScript") continue;
+    if (node.type === "ShezwMetaInfo" || node.type === "ShezwGlobalPrefix" || node.type === "ShezwStoryScript") continue;
     for (const widget of node.widgets || []) {
       if (!prefixWidgetNames.has(widget.name)) continue;
       const nextValue = prefixPath(widget.value, globalPrefix);

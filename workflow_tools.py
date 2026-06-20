@@ -48,7 +48,7 @@ DEFAULT_SS_STRUCT = {
     },
     "fields": [
         {
-            "node_type": "ShezwGlobalPrefix",
+            "node_type": "ShezwMetaInfo",
             "widgets": ["global_prefix"],
         },
         {
@@ -115,6 +115,34 @@ class ShezwGlobalPrefix:
     RETURN_NAMES = ("global_prefix",)
     FUNCTION = "execute"
     CATEGORY = "shezw/director-pro"
+
+    def execute(self, global_prefix=""):
+        return (str(global_prefix or "").strip(),)
+
+
+class ShezwMetaInfo:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "global_prefix": ("STRING", {"default": make_global_prefix_id()}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("global_prefix",)
+    FUNCTION = "execute"
+    CATEGORY = "shezw/director-pro"
+
+    @classmethod
+    def DEFAULT_PROPERTIES(cls, workflow_id="ltx-director-pro"):
+        return {
+            "workflow_id": workflow_id,
+            "script_name": f"{workflow_id}-ss.json",
+            "ss_struct": DEFAULT_SS_STRUCT,
+            "story_script": {},
+            "export_dir": "",
+        }
 
     def execute(self, global_prefix=""):
         return (str(global_prefix or "").strip(),)
