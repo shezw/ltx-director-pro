@@ -26,7 +26,7 @@ pro-workflows/pro-console.json
 | `pro-workflows/pro-console.json` | Pro Console 最新版。拆分 `CAMERA CONTROL VIDEO` 和 `MOTION / ACTION CONTROL VIDEO` 两路控制。 | 推荐 |
 | `pro-workflows/camera.json` | Director Pro camera 版。单路 IC-Control 视频输入，含镜头轨道、参考图、最后帧 PNG。 | 可用 |
 | `pro-workflows/lip-sync.json` | 对口型：图 + 音频生成同长度视频，自动按音频时长设置。 | 旧版 |
-| `pro-workflows/upscale.json` | 单纯视频高清放大。 | 可用 |
+| `pro-workflows/upscale.json` | 单纯视频高清放大；支持 30s 分段 upscale 后自动拼接。 | 可用 |
 
 ## Long Auto
 
@@ -121,6 +121,38 @@ pro-workflows/pro-console.json
 ```text
 video/pro-console-last-frame
 ```
+
+## Upscale 长视频分段
+
+推荐打开：
+
+```text
+pro-workflows/upscale.json
+```
+
+普通短视频可以直接运行原链路。超过 60s 或内存/显存不够时，用 `CHUNKED UPSCALE CONTROLLER` 节点里的 `Queue Chunks`：
+
+- 自动读取 `VHS_LoadVideo` 的输入视频、真实 fps 和总帧数。
+- 每次只设置 `skip_first_frames + frame_load_cap` 加载一个小段。
+- 每段仍然走原来的 `UpscaleModelLoader -> ImageUpscaleWithModel -> ImageScale -> VHS_VideoCombine`。
+- 分段输出前缀默认是 `video/upscale-segment_00000...`。
+- 全部分段完成后用 ffmpeg 拼接成 `video/upscale-merged_*.mp4`。
+
+分段秒数可以在 `Shezw Upscale Chunker` 节点的 `chunk_seconds` 里改。
+
+### Upscale 分段内存释放记录
+
+长视频 upscale 的主要内存压力来自每段解码后的大批量 `IMAGE` tensor，以及 upscaler / video combine 链路留下的中间结果。只调用 ComfyUI 的 `/free` 不一定能马上释放这些对象，因为上一段 prompt 的 executor output/object cache 仍可能持有引用。
+
+当前处理策略：
+
+- `Queue Chunks` 提交每个分段 prompt 时会额外标记 `shezw_upscale_chunk=true`。
+- 只有带这个标记的分段 prompt 才会临时禁用 ComfyUI executor output cache，避免大批量 `IMAGE` tensor 进入跨节点/跨 prompt 的 RAM cache。
+- 分段 prompt 完成后，后端会恢复原 cache 类型，并重建空的 `PromptExecutor` output/object cache。
+- 每段完成后会主动 `unload_models`、触发 ComfyUI model cleanup、`torch.cuda.empty_cache()` 和 Python `gc.collect()`。
+- 前端会先读取该分段的 history 输出并记录视频文件，再删除该 prompt history 并继续下一段。
+
+2026-06-19 现场日志确认：分段清理钩子已经安装并执行，`CacheType.NONE` 生效。加入 Windows native trim 后，`_heapmin`、`HeapCompact`、`SetProcessWorkingSetSize` 和 `EmptyWorkingSet` 都能执行，`rss/uss` 会明显下降；但 Windows 原生 `GetProcessMemoryInfo` 显示 `win_private_mb/PagefileUsage` 仍随每段增加，说明是 ComfyUI 进程私有提交内存没有释放，不是单纯 working set 显示问题。后端继续用 weakref 追踪 upscale chunk 执行期间各节点输出 tensor，日志字段 `tracked_tensors_after` 会列出清理后仍存活的大 tensor 来源节点、shape、大小和 referrer 摘要；同时记录 `comfy_pinned_mb` 以确认是否是 Comfy/PyTorch pinned host memory 池在增长。如果没有大 tensor 存活且 pinned memory 不增长，但 `win_private_mb` 仍增长，则问题更偏向 PyTorch/CRT/native allocator 内部保留。
 
 ## 镜头控制
 

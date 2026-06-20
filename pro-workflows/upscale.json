@@ -1,7 +1,7 @@
 {
   "id": "cfy-shezw-video-upscale-720p-to-1080p",
   "revision": 0,
-  "last_node_id": 9,
+  "last_node_id": 10,
   "last_link_id": 9,
   "nodes": [
     {
@@ -27,7 +27,7 @@
         "Node name for S&R": "MarkdownNote"
       },
       "widgets_values": [
-        "# Shezw Video Upscale 720P -> 1080P\n\n用途：单纯把原视频画面放大变高清，尽量保持原视频所有内容、动作、构图和音频不变。\n\n链路：\n- VHS_LoadVideo 解码原视频帧和音频。\n- UpscaleModelLoader + ImageUpscaleWithModel 做逐帧高清放大。\n- ImageScale 精确输出 1920x1080。\n- VHS_VideoInfoLoaded 自动读取原 FPS，VHS_VideoCombine 合回原音频。\n\n模型：把 upscaler 模型放到 `ComfyUI/models/upscale_models`。默认是 `RealESRGAN_x2plus.pth`，如果本机没有，在 UpscaleModelLoader 节点里换成你已有的 2x/4x upscaler。"
+        "# Shezw Video Upscale\n\n用途：单纯把原视频画面放大变高清，尽量保持原视频所有内容、动作、构图和音频不变。\n\n普通链路：\n- VHS_LoadVideo 解码原视频帧和音频。\n- UpscaleModelLoader + ImageUpscaleWithModel 做逐帧高清放大。\n- ImageScale 精确输出 1920x1080。\n- VHS_VideoInfoLoaded 自动读取原 FPS，VHS_VideoCombine 合回原音频。\n\n长视频分段：\n- 设置 Shezw Upscale Chunker 的 `chunk_seconds`，然后点击 `Queue Chunks`。默认 10 秒一段。\n- 它会自动把 VHS_LoadVideo 设置为每次只加载对应秒数：`skip_first_frames + frame_load_cap`。\n- 每段单独执行 upscale，输出 `video/upscale-segment_00000...`。\n- 每段完成后会等待 `cleanup_wait_seconds` 清理执行缓存，全部完成后用 ffmpeg 拼接为 `video/upscale-merged_*.mp4`。\n- `start_segment_index` 从 0 开始，用于从指定分段续跑；前面已生成的分段会按 `segment_prefix_00000...` 自动找回并参与拼接。\n\n模型：把 upscaler 模型放到 `ComfyUI/models/upscale_models`。默认是 `RealESRGAN_x2plus.pth`，如果本机没有，在 UpscaleModelLoader 节点里换成你已有的 2x/4x upscaler。"
       ]
     },
     {
@@ -549,6 +549,34 @@
       "color": "#222",
       "bgcolor": "#000",
       "title": "SAVE LAST FRAME PNG"
+    },
+    {
+      "id": 10,
+      "type": "ShezwUpscaleChunker",
+      "pos": [
+        -360,
+        -120
+      ],
+      "size": [
+        420,
+        280
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "ShezwUpscaleChunker"
+      },
+      "widgets_values": [
+        10,
+        "video/upscale-segment",
+        "video/upscale-merged",
+        12,
+        0
+      ],
+      "title": "CHUNKED UPSCALE CONTROLLER"
     }
   ],
   "links": [
