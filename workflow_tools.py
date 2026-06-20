@@ -56,8 +56,13 @@ DEFAULT_SS_STRUCT = {
             "widgets": [
                 "global_prompt",
                 "duration_frames",
+                "duration_seconds",
                 "frame_rate",
                 "timeline_data",
+                "use_custom_audio",
+                "local_prompts",
+                "segment_lengths",
+                "guide_strength",
                 "custom_width",
                 "custom_height",
                 "resize_method",
