@@ -8,6 +8,7 @@ from .ltx_director import LTXDirector
 from .ltx_director_guide import LTXDirectorGuide
 from .shezw_iclora_params import ShezwDirectorICLoRAParams, ShezwDirectorICLoRAGuide
 from .upscale_chunker import ShezwUpscaleChunker
+from .workflow_tools import ShezwGlobalPrefix, ShezwMetaInfo, ShezwStoryScript
 from comfy_api.latest import ComfyExtension, io
 from typing_extensions import override
 from aiohttp import web
@@ -16,6 +17,7 @@ import folder_paths
 import os
 import glob
 import time
+import json
 import shutil
 import subprocess
 import tempfile
@@ -28,7 +30,9 @@ import weakref
 
 log = logging.getLogger(__name__)
 _upscale_tracking_prompt_id = contextvars.ContextVar("shezw_upscale_tracking_prompt_id", default=None)
+_cleanup_prompt_kind = contextvars.ContextVar("shezw_cleanup_prompt_kind", default=None)
 _tracked_upscale_tensors = []
+_preview_guard_logged_prompt_ids = set()
 
 
 def _safe_output_prefix(prefix: str) -> str:
@@ -38,11 +42,49 @@ def _safe_output_prefix(prefix: str) -> str:
     return prefix
 
 
+def _safe_global_prefix(prefix: str) -> str:
+    prefix = (prefix or "").replace("\\", "/").strip().strip("/")
+    if not prefix or "/" in prefix or ".." in prefix:
+        raise ValueError("Invalid global prefix")
+    safe = "".join(ch if ch.isalnum() or ch in ("-", "_", ".") else "-" for ch in prefix)
+    safe = safe.strip("-._")
+    if not safe:
+        raise ValueError("Invalid global prefix")
+    return safe[:128]
+
+
 def _safe_rel_path(path: str) -> str:
     path = (path or "").replace("\\", "/").strip().strip("/")
     if not path or path.startswith("/") or ".." in path.split("/"):
         raise ValueError("Invalid relative path")
     return path
+
+
+def _safe_story_filename(filename: str) -> str:
+    filename = os.path.basename((filename or "").replace("\\", "/").strip())
+    if not filename:
+        filename = "story-ss.json"
+    if not filename.endswith("-ss.json"):
+        stem = filename[:-5] if filename.endswith(".json") else filename
+        filename = f"{stem}-ss.json"
+    return filename
+
+
+def _story_scripts_dir() -> str:
+    path = os.path.join(folder_paths.get_output_directory(), "story-scripts")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _resolve_export_dir(export_dir: str) -> str:
+    export_dir = (export_dir or "").strip()
+    if not export_dir:
+        return _story_scripts_dir()
+    export_dir = os.path.expanduser(export_dir)
+    if not os.path.isabs(export_dir):
+        export_dir = os.path.join(folder_paths.get_output_directory(), export_dir)
+    os.makedirs(export_dir, exist_ok=True)
+    return export_dir
 
 
 def _base_dir_for_type(file_type: str) -> str:
@@ -489,6 +531,56 @@ def _release_python_and_torch_memory(unload_models: bool = False):
     return notes
 
 
+def _prompt_cleanup_kind(extra_data):
+    if not isinstance(extra_data, dict):
+        return None
+    if extra_data.get("shezw_long_auto_segment"):
+        return "long_auto"
+    if extra_data.get("shezw_upscale_chunk"):
+        return "upscale"
+    if extra_data.get("shezw_cleanup_after_prompt"):
+        return "prompt"
+    return None
+
+
+def _install_ltx_tae_preview_guard():
+    try:
+        import sys
+    except Exception:
+        return False
+
+    for module_name, module in list(sys.modules.items()):
+        if not module_name.endswith("ltxv_nodes"):
+            continue
+        previewer_cls = getattr(module, "WrappedPreviewer", None)
+        if previewer_cls is None or getattr(previewer_cls, "_shezw_tae_preview_guard", False):
+            return True
+        original_decode = getattr(previewer_cls, "decode_latent_to_preview_image", None)
+        if original_decode is None:
+            continue
+
+        def decode_latent_to_preview_image_guarded(self, preview_format, x0, _original_decode=original_decode):
+            kind = _cleanup_prompt_kind.get()
+            prompt_id = _upscale_tracking_prompt_id.get()
+            if kind == "long_auto" and getattr(self, "taeltx", None) is not None:
+                if prompt_id and prompt_id not in _preview_guard_logged_prompt_ids:
+                    _preview_guard_logged_prompt_ids.add(prompt_id)
+                    log.info(
+                        "[Shezw SegmentCleanup] Skipped KJNodes TAE latent preview decode for long-auto prompt %s.",
+                        prompt_id,
+                    )
+                    if len(_preview_guard_logged_prompt_ids) > 128:
+                        _preview_guard_logged_prompt_ids.clear()
+                return None
+            return _original_decode(self, preview_format, x0)
+
+        previewer_cls.decode_latent_to_preview_image = decode_latent_to_preview_image_guarded
+        previewer_cls._shezw_tae_preview_guard = True
+        log.info("[Shezw SegmentCleanup] Installed KJNodes TAE latent preview guard.")
+        return True
+    return False
+
+
 def _install_upscale_prompt_cleanup_patch():
     try:
         import execution
@@ -521,23 +613,26 @@ def _install_upscale_prompt_cleanup_patch():
         execution._shezw_upscale_tensor_tracking_patch = True
 
     async def execute_async_with_upscale_cleanup(self, prompt, prompt_id, extra_data={}, execute_outputs=[]):
-        is_upscale_chunk = isinstance(extra_data, dict) and extra_data.get("shezw_upscale_chunk")
+        cleanup_kind = _prompt_cleanup_kind(extra_data)
         original_cache_type = getattr(self, "cache_type", None)
         chunk_cache_notes = []
         tracking_token = None
-        if is_upscale_chunk:
+        cleanup_kind_token = None
+        if cleanup_kind:
+            _install_ltx_tae_preview_guard()
             try:
                 none_cache_type = getattr(execution.CacheType, "NONE")
                 self.cache_type = none_cache_type
                 self.caches = cache_set_cls(cache_type=none_cache_type, cache_args=self.cache_args)
-                chunk_cache_notes.append("chunk_cache_type_none")
+                chunk_cache_notes.append("prompt_cache_type_none")
             except Exception as exc:
-                chunk_cache_notes.append(f"chunk_cache_type_none_failed:{exc}")
+                chunk_cache_notes.append(f"prompt_cache_type_none_failed:{exc}")
             tracking_token = _upscale_tracking_prompt_id.set(str(prompt_id))
+            cleanup_kind_token = _cleanup_prompt_kind.set(cleanup_kind)
         try:
             return await original_execute_async(self, prompt, prompt_id, extra_data, execute_outputs)
         finally:
-            if not is_upscale_chunk:
+            if not cleanup_kind:
                 return
             unload_models = bool(extra_data.get("shezw_unload_models_after_prompt", True))
             try:
@@ -549,20 +644,23 @@ def _install_upscale_prompt_cleanup_patch():
                 tracked_tensors_after = _tracked_upscale_tensor_snapshot(str(prompt_id), include_referrers=True)
                 notes.append(f"tracked_tensors_after[{_format_tracked_tensor_snapshot(tracked_tensors_after)}]")
                 log.info(
-                    "[Shezw Upscale] Cleared executor caches after chunk prompt %s; unload_models=%s; notes=%s",
+                    "[Shezw SegmentCleanup] Cleared executor caches after %s prompt %s; unload_models=%s; notes=%s",
+                    cleanup_kind,
                     prompt_id,
                     unload_models,
                     ",".join(chunk_cache_notes + notes),
                 )
             except Exception as exc:
-                log.warning("[Shezw Upscale] Executor cache cleanup failed after prompt %s: %s", prompt_id, exc)
+                log.warning("[Shezw SegmentCleanup] Executor cache cleanup failed after prompt %s: %s", prompt_id, exc)
             finally:
                 if tracking_token is not None:
                     _upscale_tracking_prompt_id.reset(tracking_token)
+                if cleanup_kind_token is not None:
+                    _cleanup_prompt_kind.reset(cleanup_kind_token)
 
     executor_cls.execute_async = execute_async_with_upscale_cleanup
     executor_cls._shezw_upscale_cleanup_patch = True
-    log.info("[Shezw Upscale] Installed per-chunk executor cache cleanup patch.")
+    log.info("[Shezw SegmentCleanup] Installed per-prompt executor cache cleanup patch.")
 
 
 _install_upscale_prompt_cleanup_patch()
@@ -606,6 +704,75 @@ async def shezw_latest_tail_frame(request):
         })
     except Exception as exc:
         return web.json_response({"found": False, "error": str(exc)}, status=400)
+
+
+@PromptServer.instance.routes.get("/shezw/long_auto/prefix_outputs")
+async def shezw_long_auto_prefix_outputs(request):
+    try:
+        global_prefix = _safe_global_prefix(request.query.get("prefix", ""))
+        output_dir = os.path.abspath(folder_paths.get_output_directory())
+        prefix_rel = os.path.join("video", global_prefix)
+        prefix_dir = os.path.abspath(os.path.join(output_dir, prefix_rel))
+        if not (prefix_dir == output_dir or prefix_dir.startswith(output_dir + os.sep)):
+            raise ValueError("Prefix folder escapes output directory")
+
+        image_exts = {".png", ".jpg", ".jpeg", ".webp"}
+        video_exts = {".mp4", ".webm", ".mov", ".mkv"}
+
+        def file_ref(path):
+            rel = os.path.relpath(path, output_dir).replace("\\", "/")
+            return {
+                "filename": os.path.basename(path),
+                "subfolder": os.path.dirname(rel).replace("\\", "/"),
+                "type": "output",
+                "mtime": os.path.getmtime(path),
+                "size": os.path.getsize(path),
+                "relpath": rel,
+            }
+
+        files = []
+        if os.path.isdir(prefix_dir):
+            for root, _dirs, names in os.walk(prefix_dir):
+                for name in names:
+                    ext = os.path.splitext(name)[1].lower()
+                    if ext not in image_exts and ext not in video_exts:
+                        continue
+                    path = os.path.join(root, name)
+                    if os.path.isfile(path):
+                        files.append(file_ref(path))
+
+        files.sort(key=lambda item: item["mtime"])
+        tails = [
+            item for item in files
+            if os.path.splitext(item["filename"])[1].lower() in image_exts
+            and (
+                "tail-frame" in item["relpath"].lower()
+                or "tail_frame" in item["relpath"].lower()
+                or "last-frame" in item["relpath"].lower()
+                or "last_frame" in item["relpath"].lower()
+            )
+        ]
+        videos = [
+            item for item in files
+            if os.path.splitext(item["filename"])[1].lower() in video_exts
+            and (
+                "segment" in item["relpath"].lower()
+                or "ltx-director-pro" in item["relpath"].lower()
+                or "director-pro" in item["relpath"].lower()
+            )
+        ]
+
+        return web.json_response({
+            "ok": True,
+            "prefix": global_prefix,
+            "folder": prefix_rel.replace("\\", "/"),
+            "exists": os.path.isdir(prefix_dir),
+            "files": files,
+            "tail_frames": tails,
+            "segment_videos": videos,
+        })
+    except Exception as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
 
 
 @PromptServer.instance.routes.get("/shezw/upscale/video_info")
@@ -706,6 +873,7 @@ async def shezw_upscale_concat(request):
         return web.json_response({"error": str(exc)}, status=400)
 
 
+@PromptServer.instance.routes.post("/shezw/prompt/cleanup")
 @PromptServer.instance.routes.post("/shezw/upscale/cleanup")
 async def shezw_upscale_cleanup(request):
     try:
@@ -759,7 +927,7 @@ async def shezw_upscale_cleanup(request):
         tensors_after = _live_torch_tensor_snapshot()
         tracked_tensors_after = _tracked_upscale_tensor_snapshot(str(prompt_id) if prompt_id else None, include_referrers=True)
         log.info(
-            "[Shezw Upscale] Cleanup endpoint prompt=%s unload_models=%s wait=%ss notes=%s mem_before=%s mem_after=%s live_tensors_after=%s tracked_tensors_after=%s",
+            "[Shezw SegmentCleanup] Cleanup endpoint prompt=%s unload_models=%s wait=%ss notes=%s mem_before=%s mem_after=%s live_tensors_after=%s tracked_tensors_after=%s",
             prompt_id,
             unload_models,
             wait_seconds,
@@ -780,6 +948,72 @@ async def shezw_upscale_cleanup(request):
             "memory_after": memory_after,
             "live_tensors_after": tensors_after,
             "tracked_tensors_after": tracked_tensors_after,
+        })
+    except Exception as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
+
+
+@PromptServer.instance.routes.get("/shezw/story_script/list")
+async def shezw_story_script_list(request):
+    try:
+        base = _story_scripts_dir()
+        files = []
+        for path in glob.glob(os.path.join(base, "*-ss.json")):
+            if os.path.isfile(path):
+                files.append({
+                    "filename": os.path.basename(path),
+                    "path": path,
+                    "mtime": os.path.getmtime(path),
+                    "size": os.path.getsize(path),
+                })
+        files.sort(key=lambda item: item["mtime"], reverse=True)
+        return web.json_response({"ok": True, "files": files})
+    except Exception as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
+
+
+@PromptServer.instance.routes.get("/shezw/story_script/load")
+async def shezw_story_script_load(request):
+    try:
+        filename = _safe_story_filename(request.query.get("filename", "story-ss.json"))
+        path = os.path.join(_story_scripts_dir(), filename)
+        if not os.path.isfile(path):
+            raise FileNotFoundError(filename)
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return web.json_response({"ok": True, "filename": filename, "story_script": data})
+    except Exception as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
+
+
+@PromptServer.instance.routes.post("/shezw/story_script/save")
+async def shezw_story_script_save(request):
+    try:
+        payload = await request.json()
+        filename = _safe_story_filename(payload.get("filename") or payload.get("script_name") or "story-ss.json")
+        story_script = payload.get("story_script")
+        if isinstance(story_script, str):
+            story_script = json.loads(story_script or "{}")
+        if not isinstance(story_script, dict):
+            raise ValueError("story_script must be an object")
+
+        targets = []
+        store_path = os.path.join(_story_scripts_dir(), filename)
+        targets.append(store_path)
+        if payload.get("export_dir"):
+            export_path = os.path.join(_resolve_export_dir(payload.get("export_dir")), filename)
+            if os.path.abspath(export_path) != os.path.abspath(store_path):
+                targets.append(export_path)
+
+        for path in targets:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(story_script, f, ensure_ascii=False, indent=2)
+                f.write("\n")
+
+        return web.json_response({
+            "ok": True,
+            "filename": filename,
+            "paths": targets,
         })
     except Exception as exc:
         return web.json_response({"ok": False, "error": str(exc)}, status=400)
@@ -847,6 +1081,9 @@ NODE_CLASS_MAPPINGS = {
     "ShezwDirectorICLoRAParams": ShezwDirectorICLoRAParams,
     "ShezwDirectorICLoRAGuide": ShezwDirectorICLoRAGuide,
     "ShezwUpscaleChunker": ShezwUpscaleChunker,
+    "ShezwMetaInfo": ShezwMetaInfo,
+    "ShezwGlobalPrefix": ShezwGlobalPrefix,
+    "ShezwStoryScript": ShezwStoryScript,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -861,6 +1098,9 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ShezwDirectorICLoRAParams": "Shezw Director IC-LoRA Params",
     "ShezwDirectorICLoRAGuide": "Shezw Director IC-LoRA Guide",
     "ShezwUpscaleChunker": "Shezw Upscale Chunker",
+    "ShezwMetaInfo": "Shezw Meta Info",
+    "ShezwGlobalPrefix": "Shezw Global Prefix",
+    "ShezwStoryScript": "Shezw Story Script",
 }
 
 WEB_DIRECTORY = "./js"

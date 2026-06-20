@@ -989,6 +989,20 @@ class TimelineEditor {
     window.removeEventListener("paste", this.handlePaste, true);
   }
 
+  reloadFromWidgets() {
+    this.timeline = parseInitial(this.timelineDataWidget?.value);
+    this.loadImages();
+    this.selectionType = "image";
+    this.selectedIndex = this.timeline.segments.length > 0 ? 0 : -1;
+    this.clearMultiSelection();
+    this.currentFrame = 0;
+    this.updateUIFromSelection();
+    this.commitChanges();
+    this.reconcileLongAutoMemoryFromPrefix().catch((err) => {
+      console.warn("[Shezw LongAuto] Prefix output analysis failed", err);
+    });
+  }
+
   getDurationFrames() {
     return parseInt((this.durationFramesWidget && this.durationFramesWidget.value > 0) ? this.durationFramesWidget.value : 24, 10);
   }
@@ -1222,21 +1236,23 @@ class TimelineEditor {
   }
 
   async queueCurrentGraphPrompt() {
+    if (typeof window.shezwApplyGlobalPrefixToGraph === "function") {
+      window.shezwApplyGlobalPrefixToGraph();
+    }
     if (app?.graphToPrompt && api) {
       const prompt = await app.graphToPrompt();
-      if (typeof api.queuePrompt === "function") {
-        const queued = await api.queuePrompt(0, prompt);
-        const promptId = queued?.prompt_id || queued?.promptId || queued?.id;
-        if (promptId) return String(promptId);
-        throw new Error(`ComfyUI queued the prompt but did not return a prompt_id: ${JSON.stringify(queued)}`);
-      }
       const resp = await api.fetchApi("/prompt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           client_id: api.clientId,
           prompt: prompt.output,
-          extra_data: { extra_pnginfo: { workflow: prompt.workflow } },
+          extra_data: {
+            extra_pnginfo: { workflow: prompt.workflow },
+            shezw_long_auto_segment: true,
+            shezw_cleanup_after_prompt: true,
+            shezw_unload_models_after_prompt: true,
+          },
         }),
       });
       const data = await resp.json();
@@ -1261,6 +1277,34 @@ class TimelineEditor {
       }
     }
     throw new Error("ComfyUI queuePrompt API is unavailable in this frontend build.");
+  }
+
+  async cleanupPromptAfterSegment(promptId, waitSeconds = 2) {
+    if (!promptId || !api?.fetchApi) return;
+    const payload = {
+      prompt_id: String(promptId),
+      wait_seconds: waitSeconds,
+      unload_models: true,
+    };
+    const endpoints = ["/shezw/prompt/cleanup", "/shezw/upscale/cleanup"];
+    for (const endpoint of endpoints) {
+      try {
+        const resp = await api.fetchApi(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (resp.ok) return;
+        if (resp.status !== 404 || endpoint === endpoints[endpoints.length - 1]) {
+          console.warn("[Shezw LongAuto] Prompt cleanup endpoint failed", endpoint, resp.status, await resp.text());
+          return;
+        }
+      } catch (err) {
+        if (endpoint === endpoints[endpoints.length - 1]) {
+          console.warn("[Shezw LongAuto] Prompt cleanup request failed", err);
+        }
+      }
+    }
   }
 
   async waitForPromptHistory(promptId, timeoutMs = 1000 * 60 * 60 * 6) {
@@ -1302,22 +1346,31 @@ class TimelineEditor {
   }
 
   getTailSavePrefix() {
+    const nodes = app?.graph?._nodes || [];
+    const node = nodes.find((candidate) => this.isTailSaveNode(candidate));
+    const prefixWidget = node?.widgets?.find((w) => w.name === "filename_prefix") || node?.widgets?.[0];
+    if (prefixWidget?.value) return `${prefixWidget.value}`.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
     const configuredPrefix = this.timeline?.meta?.tailFramePrefix;
     if (typeof configuredPrefix === "string" && configuredPrefix.trim()) {
       return configuredPrefix.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
     }
-    const nodes = app?.graph?._nodes || [];
-    const node = nodes.find((candidate) => this.isTailSaveNode(candidate));
-    const prefixWidget = node?.widgets?.find((w) => w.name === "filename_prefix") || node?.widgets?.[0];
-    return `${prefixWidget?.value || "video/long-auto-tail-frame"}`.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+    return "video/ltx-director-pro-tail-frame";
   }
 
   getSegmentVideoPrefix() {
+    const nodes = app?.graph?._nodes || [];
+    const node = nodes.find((candidate) => {
+      const title = `${candidate?.title || ""}`.toLowerCase();
+      const type = `${candidate?.type || ""}`.toLowerCase();
+      return (type.includes("save") || title.includes("save")) && (title.includes("segment video") || title.includes("director-pro video"));
+    });
+    const prefixWidget = node?.widgets?.find((w) => w.name === "filename_prefix") || node?.widgets?.[0];
+    if (prefixWidget?.value) return `${prefixWidget.value}`.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
     const configuredPrefix = this.timeline?.meta?.segmentVideoPrefix;
     if (typeof configuredPrefix === "string" && configuredPrefix.trim()) {
       return configuredPrefix.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
     }
-    return "video/long-auto-segment";
+    return "video/ltx-director-pro-segment";
   }
 
   async fetchLatestTailFrame(sinceSeconds = 0, retryDelays = [0, 5000, 10000]) {
@@ -1518,11 +1571,94 @@ class TimelineEditor {
     };
   }
 
+  async persistStoryScriptState(reason = "long_auto_update") {
+    if (typeof window.shezwStoreCurrentStoryScript !== "function") return null;
+    try {
+      const result = await window.shezwStoreCurrentStoryScript("");
+      console.info("[Shezw LongAuto] Stored story script", { reason, filename: result?.filename });
+      return result;
+    } catch (err) {
+      console.warn("[Shezw LongAuto] Story script auto-store failed", { reason, err });
+      return null;
+    }
+  }
+
+  async reconcileLongAutoMemoryFromPrefix() {
+    if (!this.timeline.meta?.longAuto) return false;
+    const prefix = typeof window.shezwGetGlobalPrefix === "function" ? window.shezwGetGlobalPrefix() : "";
+    if (!prefix || this._lastPrefixAnalysis === prefix) return false;
+    this._lastPrefixAnalysis = prefix;
+
+    const plan = this.getLongAutoPlan();
+    if (!plan.length || !api?.fetchApi) return false;
+
+    const resp = await api.fetchApi(`/shezw/long_auto/prefix_outputs?${new URLSearchParams({ prefix }).toString()}`);
+    if (!resp.ok) throw new Error(await resp.text());
+    const data = await resp.json();
+    if (!data?.ok) throw new Error(data?.error || "Prefix output analysis failed");
+
+    const tails = Array.isArray(data.tail_frames) ? data.tail_frames : [];
+    const videos = Array.isArray(data.segment_videos) ? data.segment_videos : [];
+    if (!tails.length && !videos.length) return false;
+
+    const memory = this.getLongAutoMemory();
+    let changed = false;
+    const count = Math.min(plan.length, Math.max(tails.length, videos.length));
+    for (let index = 0; index < count; index += 1) {
+      const seg = plan[index];
+      const key = this.segmentMemoryKey(seg);
+      const existing = memory.segments[key];
+      if (existing?.tailFrame && existing?.video) continue;
+
+      const tail = tails[index];
+      const video = videos[index];
+      const record = {
+        ...(existing || {}),
+        status: "done",
+        recoveredFromPrefix: true,
+        recoveredAt: new Date().toISOString(),
+      };
+      if (tail && !record.tailFrame) {
+        record.tailFrame = {
+          imageFile: tail.filename,
+          imageType: tail.type || "output",
+          subfolder: tail.subfolder || "",
+          guideStrength: 1.0,
+        };
+      }
+      if (video && !record.video) {
+        record.video = {
+          videoFile: video.filename,
+          videoType: video.type || "output",
+          subfolder: video.subfolder || "",
+        };
+      }
+      if (!record.tailFrame && !record.video) continue;
+      memory.segments[key] = {
+        index: seg.index,
+        start: seg.start,
+        end: seg.end,
+        reasons: [...(seg.reasons || [])],
+        ...record,
+      };
+      changed = true;
+    }
+
+    if (changed) {
+      memory.updatedAt = new Date().toISOString();
+      this.commitChanges();
+      await this.persistStoryScriptState("prefix_output_analysis");
+      this.updateLongAutoUI();
+    }
+    return changed;
+  }
+
   resetSegmentMemory(seg) {
     const memory = this.getLongAutoMemory();
     delete memory.segments[this.segmentMemoryKey(seg)];
     memory.updatedAt = new Date().toISOString();
     this.commitChanges();
+    this.persistStoryScriptState("long_auto_memory_reset");
     this.render();
   }
 
@@ -1564,6 +1700,7 @@ class TimelineEditor {
     if (!this.timeline.meta) this.timeline.meta = {};
     const startIndex = clamp(parseInt(options.startIndex ?? 0, 10) || 0, 0, Math.max(0, plan.length - 1));
     const skipCompleted = options.skipCompleted !== false;
+    const stopAfterOne = !!options.stopAfterOne;
     const originalMeta = { ...this.timeline.meta };
     let previousTailFrame = originalMeta.previousTailFrame || this.findPreviousCompletedTail(plan, startIndex);
     this._isQueueingAllCuts = true;
@@ -1585,23 +1722,32 @@ class TimelineEditor {
         this.commitChanges(true);
         await new Promise((resolve) => setTimeout(resolve, 0));
         const queuedAtSeconds = Date.now() / 1000;
-        const promptId = await this.queueCurrentGraphPrompt();
-        const history = await this.waitForPromptHistory(promptId);
-        const tailFrame = this.extractTailFrameFromHistory(history) || await this.fetchLatestTailFrame(queuedAtSeconds);
-        const segmentVideo = this.extractSegmentVideoFromHistory(history);
-        if (!tailFrame && seg.index < plan.length - 1) {
-          throw new Error(`Segment ${seg.index} finished without a tail-frame PNG; stopped before queuing the next segment.`);
+        let promptId = null;
+        try {
+          promptId = await this.queueCurrentGraphPrompt();
+          const history = await this.waitForPromptHistory(promptId);
+          const tailFrame = this.extractTailFrameFromHistory(history) || await this.fetchLatestTailFrame(queuedAtSeconds);
+          const segmentVideo = this.extractSegmentVideoFromHistory(history);
+          if (!tailFrame && seg.index < plan.length - 1) {
+            throw new Error(`Segment ${seg.index} finished without a tail-frame PNG; stopped before queuing the next segment.`);
+          }
+          if (tailFrame) previousTailFrame = tailFrame;
+          this.setSegmentMemory(seg, {
+            status: "done",
+            promptId,
+            queuedAtSeconds,
+            completedAt: new Date().toISOString(),
+            tailFrame,
+            video: segmentVideo,
+          });
+          this.commitChanges(true);
+          await this.persistStoryScriptState("long_auto_segment_done");
+          await this.cleanupPromptAfterSegment(promptId, 2);
+        } catch (err) {
+          if (promptId) await this.cleanupPromptAfterSegment(promptId, 2);
+          throw err;
         }
-        if (tailFrame) previousTailFrame = tailFrame;
-        this.setSegmentMemory(seg, {
-          status: "done",
-          promptId,
-          queuedAtSeconds,
-          completedAt: new Date().toISOString(),
-          tailFrame,
-          video: segmentVideo,
-        });
-        this.commitChanges(true);
+        if (stopAfterOne) break;
       }
     } catch (err) {
       console.error("[Shezw LongAuto] Failed to queue all cuts", err);
@@ -1612,6 +1758,7 @@ class TimelineEditor {
       if (rememberedMemory) this.timeline.meta.longAutoMemory = rememberedMemory;
       this._isQueueingAllCuts = false;
       this.commitChanges();
+      await this.persistStoryScriptState("long_auto_queue_finished");
       this.updateLongAutoUI();
     }
   }
@@ -5099,6 +5246,19 @@ class TimelineEditor {
         });
       });
 
+      const regenBtn = document.createElement("button");
+      regenBtn.className = "pr-mini-btn";
+      regenBtn.textContent = "Re-gen";
+      regenBtn.title = "Regenerate only this segment, using a keyframe or the previous completed tail frame as the start frame";
+      regenBtn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        this.resetSegmentMemory(seg);
+        this.dismissSettingsMenu();
+        this.queueAllCutSegments({ startIndex: seg.index, skipCompleted: false, stopAfterOne: true }).catch((err) => {
+          console.error("[Shezw LongAuto] Re-gen failed", err);
+        });
+      });
+
       const resetBtn = document.createElement("button");
       resetBtn.className = "pr-mini-btn danger";
       resetBtn.textContent = "Reset";
@@ -5111,6 +5271,7 @@ class TimelineEditor {
       });
 
       actions.appendChild(continueBtn);
+      actions.appendChild(regenBtn);
       actions.appendChild(resetBtn);
 
       row.addEventListener("click", () => {
@@ -5969,15 +6130,7 @@ app.registerExtension({
 
         setTimeout(() => {
           if (this._timelineEditor) {
-            this._timelineEditor.timeline = parseInitial(this._timelineEditor.timelineDataWidget?.value);
-            this._timelineEditor.loadImages();
-            this._timelineEditor.selectionType = "image";
-            this._timelineEditor.selectedIndex = clamp(
-              this._timelineEditor.selectedIndex, -1,
-              Math.max(-1, this._timelineEditor.timeline.segments.length - 1)
-            );
-            this._timelineEditor.updateUIFromSelection();
-            this._timelineEditor.render();
+            this._timelineEditor.reloadFromWidgets();
           }
         }, 0);
         return out;

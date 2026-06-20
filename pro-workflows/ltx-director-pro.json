@@ -1,9 +1,158 @@
 {
   "id": "shezw-long-auto-segmented-render-template",
   "revision": 0,
-  "last_node_id": 105,
+  "last_node_id": 107,
   "last_link_id": 263,
   "nodes": [
+    {
+      "id": 106,
+      "type": "ShezwMetaInfo",
+      "pos": [
+        -620,
+        -520
+      ],
+      "size": [
+        560,
+        170
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "global_prefix",
+          "type": "STRING",
+          "widget": {
+            "name": "global_prefix"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "global_prefix",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "workflow_id": "ltx-director-pro",
+        "script_name": "ltx-director-pro-ss.json",
+        "ss_struct": {
+          "schema": "ltx-director-pro.ss-struct.v1",
+          "structures": {
+            "story_script": {
+              "type": "object",
+              "properties": {
+                "schema": "string",
+                "workflow_id": "string",
+                "global_prefix": "string",
+                "created_at": "iso-datetime-string",
+                "ss_struct": "object",
+                "nodes": "array<node_entry>"
+              }
+            },
+            "node_entry": {
+              "type": "object",
+              "properties": {
+                "id": "string",
+                "type": "string",
+                "title": "string",
+                "widgets": "object<string, value>"
+              }
+            },
+            "timeline_data": {
+              "type": "object",
+              "arrays": [
+                "segments",
+                "audioSegments",
+                "cameraSegments",
+                "controlSegments",
+                "promptSegments",
+                "referenceImages",
+                "cutSegments"
+              ],
+              "objects": [
+                "meta"
+              ]
+            }
+          },
+          "fields": [
+            {
+              "node_type": "ShezwMetaInfo",
+              "widgets": [
+                "global_prefix"
+              ]
+            },
+            {
+              "node_type": "LTXDirector",
+              "widgets": [
+                "global_prompt",
+                "duration_frames",
+                "duration_seconds",
+                "frame_rate",
+                "timeline_data",
+                "use_custom_audio",
+                "local_prompts",
+                "segment_lengths",
+                "guide_strength",
+                "custom_width",
+                "custom_height",
+                "resize_method"
+              ]
+            },
+            {
+              "node_type": "LoadVideoUI",
+              "widgets": [
+                "video",
+                "start_time",
+                "end_time",
+                "duration",
+                "start_frame",
+                "end_frame",
+                "duration_frames",
+                "resize_method",
+                "custom_width",
+                "custom_height",
+                "frame_rate",
+                "display_mode",
+                "crop_x",
+                "crop_y",
+                "crop_w",
+                "crop_h"
+              ]
+            },
+            {
+              "node_type": "LoadAudioUI",
+              "widgets": [
+                "audio",
+                "start_time",
+                "end_time",
+                "duration",
+                "display_mode"
+              ]
+            },
+            {
+              "node_type": "ShezwUpscaleChunker",
+              "widgets": [
+                "chunk_seconds",
+                "segment_prefix",
+                "output_prefix",
+                "cleanup_wait_seconds",
+                "start_segment_index"
+              ]
+            }
+          ]
+        },
+        "story_script": {},
+        "export_dir": "",
+        "Node name for S&R": "ShezwMetaInfo"
+      },
+      "widgets_values": [
+        ""
+      ],
+      "title": "Meta Info"
+    },
     {
       "id": 46,
       "type": "LTXDirector",
@@ -16,7 +165,7 @@
         760
       ],
       "flags": {},
-      "order": 2,
+      "order": 1,
       "mode": 0,
       "inputs": [
         {
@@ -104,7 +253,7 @@
         "cinematic 3D animated video, production quality, stable identity, consistent character appearance, detailed materials and textures. Long-auto segmented render: keep this segment visually continuous with its first frame, follow local prompts and the selected camera motion for this segment only.",
         720,
         30,
-        "{\"segments\":[],\"audioSegments\":[],\"cameraSegments\":[{\"id\":\"shezw-camera-001\",\"start\":0,\"length\":192,\"prompt\":\"static camera, locked stable shot, no pan, no zoom, no camera shake\",\"type\":\"camera\",\"cameraMotion\":\"static\"},{\"id\":\"shezw-camera-002\",\"start\":192,\"length\":168,\"prompt\":\"dolly in, camera moves forward toward the subject with stable framing\",\"type\":\"camera\",\"cameraMotion\":\"dolly_in\"},{\"id\":\"shezw-camera-003\",\"start\":360,\"length\":192,\"prompt\":\"static camera, locked stable shot, no pan, no zoom, no camera shake\",\"type\":\"camera\",\"cameraMotion\":\"static\"},{\"id\":\"shezw-camera-004\",\"start\":552,\"length\":168,\"prompt\":\"static camera, locked stable shot, no pan, no zoom, no camera shake\",\"type\":\"camera\",\"cameraMotion\":\"static\"}],\"controlSegments\":[{\"id\":\"shezw-camera-control-001\",\"start\":0,\"length\":720,\"prompt\":\"use the uploaded camera control video primarily for scene geometry, perspective change, parallax, and camera movement\",\"type\":\"control\",\"controlType\":\"camera_control\",\"strength\":0.55},{\"id\":\"shezw-motion-control-001\",\"start\":0,\"length\":720,\"prompt\":\"use the uploaded motion/action control video primarily for body pose, hand motion, gesture timing, and subject movement\",\"type\":\"control\",\"controlType\":\"motion_control\",\"strength\":0.55}],\"promptSegments\":[{\"id\":\"shezw-action-001\",\"start\":0,\"length\":192,\"prompt\":\"neutral attentive expression, begins speaking, lips open and close with speech, slight head nod, shoulders remain stable, hands relaxed\",\"type\":\"prompt\"},{\"id\":\"shezw-action-002\",\"start\":192,\"length\":168,\"prompt\":\"warm smile while speaking, right hand rises slightly into a small open palm gesture, fingers natural, gesture follows speech emphasis, mouth remains visible\",\"type\":\"prompt\"},{\"id\":\"shezw-action-003\",\"start\":360,\"length\":192,\"prompt\":\"explaining motion, subtle pointing gesture, eyebrows lift, jaw and cheeks move with voice rhythm, stable torso, no large body movement\",\"type\":\"prompt\"},{\"id\":\"shezw-action-004\",\"start\":552,\"length\":168,\"prompt\":\"finishes sentence, hand lowers naturally, small final nod, calm confident expression, camera locked and stable\",\"type\":\"prompt\"}],\"referenceImages\":[],\"cutSegments\":[],\"meta\":{\"longAuto\":true,\"activeSegmentIndex\":0,\"maxSegmentSeconds\":15,\"keyframeToleranceSeconds\":0.25,\"directQueueMode\":\"active_segment_only\",\"queueAllByDefault\":true,\"autoCut\":true,\"manualCutToleranceSeconds\":0.25,\"tailFramePrefix\":\"video/long-auto-tail-frame\",\"segmentVideoPrefix\":\"video/long-auto-segment\"}}",
+        "{\"segments\":[],\"audioSegments\":[],\"cameraSegments\":[{\"id\":\"shezw-camera-001\",\"start\":0,\"length\":192,\"prompt\":\"static camera, locked stable shot, no pan, no zoom, no camera shake\",\"type\":\"camera\",\"cameraMotion\":\"static\"},{\"id\":\"shezw-camera-002\",\"start\":192,\"length\":168,\"prompt\":\"dolly in, camera moves forward toward the subject with stable framing\",\"type\":\"camera\",\"cameraMotion\":\"dolly_in\"},{\"id\":\"shezw-camera-003\",\"start\":360,\"length\":192,\"prompt\":\"static camera, locked stable shot, no pan, no zoom, no camera shake\",\"type\":\"camera\",\"cameraMotion\":\"static\"},{\"id\":\"shezw-camera-004\",\"start\":552,\"length\":168,\"prompt\":\"static camera, locked stable shot, no pan, no zoom, no camera shake\",\"type\":\"camera\",\"cameraMotion\":\"static\"}],\"controlSegments\":[{\"id\":\"shezw-camera-control-001\",\"start\":0,\"length\":720,\"prompt\":\"use the uploaded camera control video primarily for scene geometry, perspective change, parallax, and camera movement\",\"type\":\"control\",\"controlType\":\"camera_control\",\"strength\":0.55},{\"id\":\"shezw-motion-control-001\",\"start\":0,\"length\":720,\"prompt\":\"use the uploaded motion/action control video primarily for body pose, hand motion, gesture timing, and subject movement\",\"type\":\"control\",\"controlType\":\"motion_control\",\"strength\":0.55}],\"promptSegments\":[{\"id\":\"shezw-action-001\",\"start\":0,\"length\":192,\"prompt\":\"neutral attentive expression, begins speaking, lips open and close with speech, slight head nod, shoulders remain stable, hands relaxed\",\"type\":\"prompt\"},{\"id\":\"shezw-action-002\",\"start\":192,\"length\":168,\"prompt\":\"warm smile while speaking, right hand rises slightly into a small open palm gesture, fingers natural, gesture follows speech emphasis, mouth remains visible\",\"type\":\"prompt\"},{\"id\":\"shezw-action-003\",\"start\":360,\"length\":192,\"prompt\":\"explaining motion, subtle pointing gesture, eyebrows lift, jaw and cheeks move with voice rhythm, stable torso, no large body movement\",\"type\":\"prompt\"},{\"id\":\"shezw-action-004\",\"start\":552,\"length\":168,\"prompt\":\"finishes sentence, hand lowers naturally, small final nod, calm confident expression, camera locked and stable\",\"type\":\"prompt\"}],\"referenceImages\":[],\"cutSegments\":[],\"meta\":{\"longAuto\":true,\"activeSegmentIndex\":0,\"maxSegmentSeconds\":15,\"keyframeToleranceSeconds\":0.25,\"directQueueMode\":\"active_segment_only\",\"queueAllByDefault\":true,\"autoCut\":true,\"manualCutToleranceSeconds\":0.25,\"tailFramePrefix\":\"video/ltx-director-pro-tail-frame\",\"segmentVideoPrefix\":\"video/ltx-director-pro-segment\"}}",
         "neutral attentive expression, begins speaking, lips open and close with speech, slight head nod, shoulders remain stable, hands relaxed. Camera: static camera, locked stable shot, no pan, no zoom, no camera shake. IC-LoRA camera_control strength 0.55: use the uploaded camera control video primarily for scene geometry, perspective change, parallax, and camera movement. IC-LoRA motion_control strength 0.55: use the uploaded motion/action control video primarily for body pose, hand motion, gesture timing, and subject movement | warm smile while speaking, right hand rises slightly into a small open palm gesture, fingers natural, gesture follows speech emphasis, mouth remains visible. Camera: dolly in, camera moves forward toward the subject with stable framing. IC-LoRA camera_control strength 0.55: use the uploaded camera control video primarily for scene geometry, perspective change, parallax, and camera movement. IC-LoRA motion_control strength 0.55: use the uploaded motion/action control video primarily for body pose, hand motion, gesture timing, and subject movement | explaining motion, subtle pointing gesture, eyebrows lift, jaw and cheeks move with voice rhythm, stable torso, no large body movement. Camera: static camera, locked stable shot, no pan, no zoom, no camera shake. IC-LoRA camera_control strength 0.55: use the uploaded camera control video primarily for scene geometry, perspective change, parallax, and camera movement. IC-LoRA motion_control strength 0.55: use the uploaded motion/action control video primarily for body pose, hand motion, gesture timing, and subject movement | finishes sentence, hand lowers naturally, small final nod, calm confident expression, camera locked and stable. Camera: static camera, locked stable shot, no pan, no zoom, no camera shake. IC-LoRA camera_control strength 0.55: use the uploaded camera control video primarily for scene geometry, perspective change, parallax, and camera movement. IC-LoRA motion_control strength 0.55: use the uploaded motion/action control video primarily for body pose, hand motion, gesture timing, and subject movement",
         "192,168,192,168",
         0.001,
@@ -117,9 +266,9 @@
         "crop",
         32,
         12,
-        "long_auto_segment_template=true; max_segment_seconds=15; tail_frame_carry=auto; auto_cut=true; manual_cut_track=cutSegments; manual_cut_tolerance_seconds=0.25; keyframe_tolerance_seconds=0.25"
+        "ltx_director_pro=true; long_auto_segment_template=true; max_segment_seconds=15; tail_frame_carry=auto; auto_cut=true; manual_cut_track=cutSegments; story_script=true; global_prefix=true"
       ],
-      "title": "LONG AUTO DIRECTOR - Segment Timeline Source",
+      "title": "LTX DIRECTOR PRO - Story Timeline",
       "extra": {
         "shezw_long_auto": {
           "manualCutToleranceSeconds": 0.25,
@@ -139,7 +288,7 @@
         530
       ],
       "flags": {},
-      "order": 6,
+      "order": 5,
       "mode": 0,
       "inputs": [
         {
@@ -155,7 +304,7 @@
         "Node name for S&R": "SaveVideo"
       },
       "widgets_values": [
-        "video/long-auto-segment",
+        "video/ltx-director-pro-segment",
         "auto",
         "auto"
       ],
@@ -175,7 +324,7 @@
         150
       ],
       "flags": {},
-      "order": 5,
+      "order": 4,
       "mode": 0,
       "inputs": [
         {
@@ -327,7 +476,7 @@
         290
       ],
       "flags": {},
-      "order": 3,
+      "order": 2,
       "mode": 0,
       "inputs": [
         {
@@ -452,7 +601,7 @@
         290
       ],
       "flags": {},
-      "order": 4,
+      "order": 3,
       "mode": 0,
       "inputs": [
         {
@@ -559,7 +708,7 @@
       "title": "Long-Auto Notes",
       "properties": {},
       "widgets_values": [
-        "# Shezw Long-Auto: segmented long-video render template\n\nPurpose: render long Director timelines as ordered segments, with tail-frame continuity between segments.\n\nThis workflow keeps the same core chain as Pro Console: Director timeline, keyframes, references, local prompts, camera track, optional camera/motion IC video, video output, and tail-frame PNG output.\n\nLong-auto render logic:\n- Full timeline can be 30s/60s+ in the Director UI.\n- Segment planner cuts at manual cuts first. When Auto Cut is ON, camera and IC-Control boundaries also become split points. Optional max segment length is disabled by default.\n- Manual cuts have a 0.25s protection zone by default; camera/IC auto cuts inside that zone are ignored and timeline items are snapped to the manual cut while materializing each segment.\n- Queue All Cuts renders segments sequentially, waits for each segment to finish, reads its tail-frame PNG from ComfyUI history, then feeds it into the next segment.\n- If a segment starts with an explicit keyframe, use that keyframe as first frame.\n- If no start keyframe exists, use the previous segment tail-frame PNG as the next segment first frame.\n- Text/camera/static tracks are clipped into per-segment copies. Control video tracks are frame-sliced with trimStart/length per segment.\n- If a tail-frame PNG cannot be found before the next segment, rendering stops instead of continuing with a random first frame.\n- Each segment writes its own video and tail frame.\n- Final video can be built by concatenating segment videos and muxing the original full audio when needed.\n\nVideo IC-Control is automatic and optional: leave optional camera/action video paths empty to skip them; provide a video path and add an IC-Control track segment with strength > 0 to enable the corresponding guide.\n\nOutputs:\n- Segment video prefix: `video/long-auto-segment`\n- Tail-frame PNG prefix: `video/long-auto-tail-frame`\n\nImportant: Do not use this as a single-pass 30s LTX generation graph. Press Queue/Queue All Cuts to run sequential segmented renders, or keep activeSegmentIndex set for a single segment test."
+        "# Shezw Long-Auto: segmented long-video render template\n\nPurpose: render long Director timelines as ordered segments, with tail-frame continuity between segments.\n\nThis workflow keeps the same core chain as Pro Console: Director timeline, keyframes, references, local prompts, camera track, optional camera/motion IC video, video output, and tail-frame PNG output.\n\nLong-auto render logic:\n- Full timeline can be 30s/60s+ in the Director UI.\n- Segment planner cuts at manual cuts first. When Auto Cut is ON, camera and IC-Control boundaries also become split points. Optional max segment length is disabled by default.\n- Manual cuts have a 0.25s protection zone by default; camera/IC auto cuts inside that zone are ignored and timeline items are snapped to the manual cut while materializing each segment.\n- Queue All Cuts renders segments sequentially, waits for each segment to finish, reads its tail-frame PNG from ComfyUI history, then feeds it into the next segment.\n- If a segment starts with an explicit keyframe, use that keyframe as first frame.\n- If no start keyframe exists, use the previous segment tail-frame PNG as the next segment first frame.\n- Text/camera/static tracks are clipped into per-segment copies. Control video tracks are frame-sliced with trimStart/length per segment.\n- If a tail-frame PNG cannot be found before the next segment, rendering stops instead of continuing with a random first frame.\n- Each segment writes its own video and tail frame.\n- Final video can be built by concatenating segment videos and muxing the original full audio when needed.\n\nVideo IC-Control is automatic and optional: leave optional camera/action video paths empty to skip them; provide a video path and add an IC-Control track segment with strength > 0 to enable the corresponding guide.\n\nOutputs:\n- Segment video prefix: `video/ltx-director-pro-segment`\n- Tail-frame PNG prefix: `video/ltx-director-pro-tail-frame`\n\nImportant: Do not use this as a single-pass 30s LTX generation graph. Press Queue/Queue All Cuts to run sequential segmented renders, or keep activeSegmentIndex set for a single segment test.\n\n## Meta Info\n\nUse Meta Info to create a per-run ID, apply output prefixes, and import/store/export `*-ss.json` content-only scripts."
       ],
       "color": "#322",
       "bgcolor": "#533"
@@ -576,7 +725,7 @@
         130
       ],
       "flags": {},
-      "order": 7,
+      "order": 6,
       "mode": 0,
       "inputs": [
         {
@@ -630,7 +779,7 @@
         360
       ],
       "flags": {},
-      "order": 20,
+      "order": 19,
       "mode": 0,
       "inputs": [
         {
@@ -828,7 +977,7 @@
         110
       ],
       "flags": {},
-      "order": 6,
+      "order": 5,
       "mode": 0,
       "inputs": [
         {
@@ -904,7 +1053,7 @@
         120
       ],
       "flags": {},
-      "order": 7,
+      "order": 6,
       "mode": 0,
       "inputs": [
         {
@@ -962,7 +1111,7 @@
         "Node name for S&R": "SaveImageKJ"
       },
       "widgets_values": [
-        "video/long-auto-tail-frame",
+        "video/ltx-director-pro-tail-frame",
         "output",
         ""
       ],
@@ -982,7 +1131,7 @@
         360
       ],
       "flags": {},
-      "order": 21,
+      "order": 20,
       "mode": 0,
       "inputs": [
         {

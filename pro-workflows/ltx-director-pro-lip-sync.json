@@ -4504,7 +4504,7 @@
   "groups": [],
   "id": "07824bbb-6672-4bb0-ac36-4313a519e35b",
   "last_link_id": 752,
-  "last_node_id": 347,
+  "last_node_id": 349,
   "links": [
     [
       726,
@@ -4565,6 +4565,155 @@
   ],
   "nodes": [
     {
+      "id": 348,
+      "type": "ShezwMetaInfo",
+      "pos": [
+        -620,
+        -520
+      ],
+      "size": [
+        560,
+        170
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "global_prefix",
+          "type": "STRING",
+          "widget": {
+            "name": "global_prefix"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "global_prefix",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "workflow_id": "ltx-director-pro-lip-sync",
+        "script_name": "ltx-director-pro-lip-sync-ss.json",
+        "ss_struct": {
+          "schema": "ltx-director-pro.ss-struct.v1",
+          "structures": {
+            "story_script": {
+              "type": "object",
+              "properties": {
+                "schema": "string",
+                "workflow_id": "string",
+                "global_prefix": "string",
+                "created_at": "iso-datetime-string",
+                "ss_struct": "object",
+                "nodes": "array<node_entry>"
+              }
+            },
+            "node_entry": {
+              "type": "object",
+              "properties": {
+                "id": "string",
+                "type": "string",
+                "title": "string",
+                "widgets": "object<string, value>"
+              }
+            },
+            "timeline_data": {
+              "type": "object",
+              "arrays": [
+                "segments",
+                "audioSegments",
+                "cameraSegments",
+                "controlSegments",
+                "promptSegments",
+                "referenceImages",
+                "cutSegments"
+              ],
+              "objects": [
+                "meta"
+              ]
+            }
+          },
+          "fields": [
+            {
+              "node_type": "ShezwMetaInfo",
+              "widgets": [
+                "global_prefix"
+              ]
+            },
+            {
+              "node_type": "LTXDirector",
+              "widgets": [
+                "global_prompt",
+                "duration_frames",
+                "duration_seconds",
+                "frame_rate",
+                "timeline_data",
+                "use_custom_audio",
+                "local_prompts",
+                "segment_lengths",
+                "guide_strength",
+                "custom_width",
+                "custom_height",
+                "resize_method"
+              ]
+            },
+            {
+              "node_type": "LoadVideoUI",
+              "widgets": [
+                "video",
+                "start_time",
+                "end_time",
+                "duration",
+                "start_frame",
+                "end_frame",
+                "duration_frames",
+                "resize_method",
+                "custom_width",
+                "custom_height",
+                "frame_rate",
+                "display_mode",
+                "crop_x",
+                "crop_y",
+                "crop_w",
+                "crop_h"
+              ]
+            },
+            {
+              "node_type": "LoadAudioUI",
+              "widgets": [
+                "audio",
+                "start_time",
+                "end_time",
+                "duration",
+                "display_mode"
+              ]
+            },
+            {
+              "node_type": "ShezwUpscaleChunker",
+              "widgets": [
+                "chunk_seconds",
+                "segment_prefix",
+                "output_prefix",
+                "cleanup_wait_seconds",
+                "start_segment_index"
+              ]
+            }
+          ]
+        },
+        "story_script": {},
+        "export_dir": "",
+        "Node name for S&R": "ShezwMetaInfo"
+      },
+      "widgets_values": [
+        ""
+      ],
+      "title": "Meta Info"
+    },
+    {
       "bgcolor": "#000",
       "color": "#222",
       "flags": {},
@@ -4585,7 +4734,7 @@
       "title": "Model Links",
       "type": "MarkdownNote",
       "widgets_values": [
-        "- Huggingface: [Lightricks/LTX-2.3](https://huggingface.co/Lightricks/LTX-2.3/)\n- Github: [LTX-2](https://github.com/Lightricks/LTX-2)\n\n## Shezw LTX-2.3 Image + Audio to Video\n\n用途：输入一张图片和一段音频，使用 LTX-2.3 生成音频驱动视频。Prompt 可写中文或英文，`TextGenerateLTX2Prompt` 会结合图片与文本生成适合 LTX-2.3 的英文视频提示。\n\n使用：\n1. 把图片放入 ComfyUI/input，LoadImage 选择图片。\n2. 把音频放入 ComfyUI/input，LoadAudio 选择音频。\n3. Duration 填入音频总秒数，audio_start 保持 0。当前 ComfyUI 官方模板没有内置 AudioDuration 输出节点，所以纯原生节点不能从 LoadAudio 自动取秒数；这里保留官方 LTX-2.3 结构，用 Duration 控制视频帧数并用 TrimAudioDuration 对齐音频。\n4. 生成结果保存前缀：video/cfy-shezw-ltx23-audio-image-video。\n\n建议：24 fps，1280x720；竖屏可改 720x1280。长音频建议分段生成后剪辑拼接，显存压力会更稳。\n\n## Required Models\n\ncheckpoints/ltx-2.3-22b-dev-fp8.safetensors\nloras/ltx-2.3-22b-distilled-lora-384.safetensors\nloras/gemma-3-12b-it-abliterated_lora_rank64_bf16.safetensors\nlatent_upscale_models/ltx-2.3-spatial-upscaler-x2-1.1.safetensors\ntext_encoders/gemma_3_12B_it_fp4_mixed.safetensors\n\n## Auto Duration Variant\n\nThis file connects AudioDuration.seconds to LTX-2.3 Duration. It requires the zhihui_nodes_comfyui AudioDuration custom node. If that node is missing, install the AudioDuration node or manually set Duration in a copied workflow."
+        "- Huggingface: [Lightricks/LTX-2.3](https://huggingface.co/Lightricks/LTX-2.3/)\n- Github: [LTX-2](https://github.com/Lightricks/LTX-2)\n\n## Shezw LTX-2.3 Image + Audio to Video\n\n用途：输入一张图片和一段音频，使用 LTX-2.3 生成音频驱动视频。Prompt 可写中文或英文，`TextGenerateLTX2Prompt` 会结合图片与文本生成适合 LTX-2.3 的英文视频提示。\n\n使用：\n1. 把图片放入 ComfyUI/input，LoadImage 选择图片。\n2. 把音频放入 ComfyUI/input，LoadAudio 选择音频。\n3. Duration 填入音频总秒数，audio_start 保持 0。当前 ComfyUI 官方模板没有内置 AudioDuration 输出节点，所以纯原生节点不能从 LoadAudio 自动取秒数；这里保留官方 LTX-2.3 结构，用 Duration 控制视频帧数并用 TrimAudioDuration 对齐音频。\n4. 生成结果保存前缀：video/cfy-shezw-ltx23-audio-image-video。\n\n建议：24 fps，1280x720；竖屏可改 720x1280。长音频建议分段生成后剪辑拼接，显存压力会更稳。\n\n## Required Models\n\ncheckpoints/ltx-2.3-22b-dev-fp8.safetensors\nloras/ltx-2.3-22b-distilled-lora-384.safetensors\nloras/gemma-3-12b-it-abliterated_lora_rank64_bf16.safetensors\nlatent_upscale_models/ltx-2.3-spatial-upscaler-x2-1.1.safetensors\ntext_encoders/gemma_3_12B_it_fp4_mixed.safetensors\n\n## Auto Duration Variant\n\nThis file connects AudioDuration.seconds to LTX-2.3 Duration. It requires the zhihui_nodes_comfyui AudioDuration custom node. If that node is missing, install the AudioDuration node or manually set Duration in a copied workflow.\n\n## Meta Info\n\nUse Meta Info to create a per-run ID, apply output prefixes, and import/store/export `*-ss.json` content-only scripts."
       ]
     },
     {
@@ -4639,7 +4788,7 @@
       "id": 339,
       "inputs": [],
       "mode": 4,
-      "order": 2,
+      "order": 1,
       "outputs": [
         {
           "links": null,
@@ -4684,7 +4833,7 @@
         }
       ],
       "mode": 0,
-      "order": 5,
+      "order": 4,
       "outputs": [],
       "pos": [
         517.9999735637998,
@@ -4708,7 +4857,7 @@
       ],
       "type": "SaveVideo",
       "widgets_values": [
-        "video/cfy-shezw-ltx23-audio-image-video",
+        "video/ltx-director-pro-lip-sync",
         "auto",
         "auto"
       ]
@@ -4718,7 +4867,7 @@
       "id": 276,
       "inputs": [],
       "mode": 0,
-      "order": 3,
+      "order": 2,
       "outputs": [
         {
           "links": [
@@ -4845,7 +4994,7 @@
         }
       ],
       "mode": 0,
-      "order": 4,
+      "order": 3,
       "outputs": [
         {
           "links": [
@@ -4948,7 +5097,7 @@
         110
       ],
       "flags": {},
-      "order": 3,
+      "order": 2,
       "mode": 0,
       "inputs": [
         {
@@ -4994,7 +5143,7 @@
         110
       ],
       "flags": {},
-      "order": 5,
+      "order": 4,
       "mode": 0,
       "inputs": [
         {
@@ -5070,7 +5219,7 @@
         120
       ],
       "flags": {},
-      "order": 6,
+      "order": 5,
       "mode": 0,
       "inputs": [
         {
@@ -5128,7 +5277,7 @@
         "Node name for S&R": "SaveImageKJ"
       },
       "widgets_values": [
-        "video/lip-sync-last-frame",
+        "video/ltx-director-pro-lip-sync-tail-frame",
         "output",
         ""
       ],
