@@ -123,11 +123,17 @@ function getAllowedWidgets(struct, node) {
 
 function looksLikeLongAutoWorkflow(data) {
   if (!data || !Array.isArray(data.nodes)) return false;
+  const widgetValues = (node) => {
+    const values = node.widgets_values || [];
+    if (Array.isArray(values)) return values;
+    if (values && typeof values === "object") return Object.values(values);
+    return [];
+  };
   const haystack = [
     data.id,
     data.name,
     data.title,
-    ...(data.nodes || []).flatMap((node) => [node.type, node.title, ...(node.widgets_values || [])]),
+    ...(data.nodes || []).flatMap((node) => [node.type, node.title, ...widgetValues(node)]),
   ].join(" ").toLowerCase();
   return haystack.includes("long-auto")
     || haystack.includes("long_auto")
@@ -142,6 +148,7 @@ function normalizeLegacyTimelineData(value, sourceWorkflow) {
     if (!Array.isArray(timeline[key])) timeline[key] = [];
   }
   const meta = timeline.meta && typeof timeline.meta === "object" ? timeline.meta : {};
+  const { longAutoMemory, tailFramePrefix, segmentVideoPrefix, ...keptMeta } = meta;
   timeline.meta = {
     longAuto: true,
     activeSegmentIndex: 0,
@@ -151,19 +158,21 @@ function normalizeLegacyTimelineData(value, sourceWorkflow) {
     queueAllByDefault: true,
     autoCut: true,
     manualCutToleranceSeconds: 0.25,
+    ...keptMeta,
     tailFramePrefix: "video/ltx-director-pro-tail-frame",
     segmentVideoPrefix: "video/ltx-director-pro-segment",
-    ...meta,
   };
   return JSON.stringify(timeline);
 }
 
 function workflowWidgetNames(workflowNode) {
+  const knownNames = WORKFLOW_WIDGET_NAMES[workflowNode.type] || [];
+  if (knownNames.length) return knownNames;
   const inputNames = (workflowNode.inputs || [])
     .map((input) => input?.widget?.name)
     .filter(Boolean);
   if (inputNames.length) return inputNames;
-  return WORKFLOW_WIDGET_NAMES[workflowNode.type] || [];
+  return [];
 }
 
 function workflowWidgetValue(workflowNode, names, index, name) {
@@ -269,6 +278,10 @@ function applyStoryScript(story, storyNode) {
     let node = byId.get(String(entry.id));
     if (!node) {
       node = nodeList.find((candidate) => candidate.type === entry.type && (!entry.title || candidate.title === entry.title));
+    }
+    if (!node) {
+      const sameType = nodeList.filter((candidate) => candidate.type === entry.type);
+      if (sameType.length === 1) [node] = sameType;
     }
     if (!node) continue;
     for (const [name, value] of Object.entries(entry.widgets || {})) {
