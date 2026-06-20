@@ -1,9 +1,128 @@
 {
   "id": "cfy-shezw-director-pro-ltxdirector",
   "revision": 0,
-  "last_node_id": 102,
+  "last_node_id": 104,
   "last_link_id": 259,
   "nodes": [
+    {
+      "id": 103,
+      "type": "ShezwGlobalPrefix",
+      "pos": [
+        -620,
+        -520
+      ],
+      "size": [
+        340,
+        110
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "global_prefix",
+          "type": "STRING",
+          "widget": {
+            "name": "global_prefix"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "global_prefix",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ShezwGlobalPrefix"
+      },
+      "widgets_values": [
+        ""
+      ],
+      "title": "GLOBAL PREFIX"
+    },
+    {
+      "id": 104,
+      "type": "ShezwStoryScript",
+      "pos": [
+        -240,
+        -520
+      ],
+      "size": [
+        520,
+        260
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "workflow_id",
+          "type": "STRING",
+          "widget": {
+            "name": "workflow_id"
+          },
+          "link": null
+        },
+        {
+          "name": "script_name",
+          "type": "STRING",
+          "widget": {
+            "name": "script_name"
+          },
+          "link": null
+        },
+        {
+          "name": "ss_struct",
+          "type": "STRING",
+          "widget": {
+            "name": "ss_struct"
+          },
+          "link": null
+        },
+        {
+          "name": "story_script",
+          "type": "STRING",
+          "widget": {
+            "name": "story_script"
+          },
+          "link": null
+        },
+        {
+          "name": "export_dir",
+          "type": "STRING",
+          "widget": {
+            "name": "export_dir"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "story_script",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "ss_struct",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ShezwStoryScript"
+      },
+      "widgets_values": [
+        "ltx-director-pro-camera",
+        "ltx-director-pro-camera-ss.json",
+        "{\"schema\": \"ltx-director-pro.ss-struct.v1\", \"structures\": {\"story_script\": {\"type\": \"object\", \"properties\": {\"schema\": \"string\", \"workflow_id\": \"string\", \"global_prefix\": \"string\", \"created_at\": \"iso-datetime-string\", \"ss_struct\": \"object\", \"nodes\": \"array<node_entry>\"}}, \"node_entry\": {\"type\": \"object\", \"properties\": {\"id\": \"string\", \"type\": \"string\", \"title\": \"string\", \"widgets\": \"object<string, value>\"}}, \"timeline_data\": {\"type\": \"object\", \"arrays\": [\"segments\", \"audioSegments\", \"cameraSegments\", \"controlSegments\", \"promptSegments\", \"referenceImages\", \"cutSegments\"], \"objects\": [\"meta\"]}}, \"fields\": [{\"node_type\": \"ShezwGlobalPrefix\", \"widgets\": [\"global_prefix\"]}, {\"node_type\": \"LTXDirector\", \"widgets\": [\"global_prompt\", \"duration_frames\", \"frame_rate\", \"timeline_data\", \"custom_width\", \"custom_height\", \"resize_method\"]}, {\"node_type\": \"LoadVideoUI\", \"widgets\": [\"video\", \"start_time\", \"end_time\", \"duration\", \"start_frame\", \"end_frame\", \"duration_frames\", \"resize_method\", \"custom_width\", \"custom_height\", \"frame_rate\", \"display_mode\", \"crop_x\", \"crop_y\", \"crop_w\", \"crop_h\"]}, {\"node_type\": \"LoadAudioUI\", \"widgets\": [\"audio\", \"start_time\", \"end_time\", \"duration\", \"display_mode\"]}, {\"node_type\": \"ShezwUpscaleChunker\", \"widgets\": [\"chunk_seconds\", \"segment_prefix\", \"output_prefix\", \"cleanup_wait_seconds\", \"start_segment_index\"]}]}",
+        "{}",
+        ""
+      ],
+      "title": "STORY SCRIPT"
+    },
     {
       "id": 46,
       "type": "LTXDirector",
@@ -149,7 +268,7 @@
         "Node name for S&R": "SaveVideo"
       },
       "widgets_values": [
-        "video/cfy-shezw-director-pro",
+        "video/ltx-director-pro-camera",
         "auto",
         "auto"
       ],
@@ -539,7 +658,7 @@
       "title": "Shezw Director-Pro Notes",
       "properties": {},
       "widgets_values": [
-        "# Shezw Director-Pro: real LTX Director / Prompt Relay workflow\n\nThis workflow is based on WhatDreamsCost-ComfyUI LTX Director.\n\nThe important part is the LTXDirector node:\n- `global_prompt` holds persistent scene, identity, style, and material rules.\n- `timeline_data` stores visual timeline blocks.\n- `promptSegments` is the independent Local Prompt track; it generates `local_prompts` and `segment_lengths`.\n- `segment_lengths` stores pixel-frame duration per action segment.\n\nLTXDirector does not simply concatenate text. It tokenizes global + local prompts, maps token ranges, then patches LTX cross-attention with Prompt Relay temporal masks. That is the mechanism that makes action descriptions reach the model at the correct time.\n\nEdit actions in the Local Prompt track. Keyframes are visual frame anchors only: image, time, and strength. Camera track uses fixed LTX camera presets only: static, dolly_in, dolly_out, dolly_left, dolly_right, jib_up, jib_down, focus_shift, or none. Keep each local prompt action-focused: expression, mouth movement, hand gesture, and body pose. Avoid stuffing scene/style into every action block.\n\nIC-Control is now wired to a real IC-LoRA path: load a control/depth/motion video in the outer IC CONTROL VIDEO / IMAGE INPUT node. The Director IC-Control track start and strength are read by ShezwDirectorICLoRAGuide inside both sampling stages. Required LoRA: ltx-2.3-22b-ic-lora-union-control-ref0.5.safetensors.\n\nReference channel is now actively consumed: Add Reference images are loaded into guide_data.references and ShezwDirectorICLoRAGuide applies up to 8 references as low-strength IC-LoRA visual reference guides before applying the control video guide.\n\nFinal-frame PNG output: the Decode subgraph also exposes the VAEDecode image batch. GetImageRangeFromBatch uses start_index=-1 and num_frames=1, then SaveImageKJ writes a separate PNG with prefix `video/camera-last-frame`.\n\nVideo IC-Control is automatic and optional: leave the optional video path empty to skip it; provide a video path to enable IC guide without rewiring."
+        "# Shezw Director-Pro: real LTX Director / Prompt Relay workflow\n\nThis workflow is based on WhatDreamsCost-ComfyUI LTX Director.\n\nThe important part is the LTXDirector node:\n- `global_prompt` holds persistent scene, identity, style, and material rules.\n- `timeline_data` stores visual timeline blocks.\n- `promptSegments` is the independent Local Prompt track; it generates `local_prompts` and `segment_lengths`.\n- `segment_lengths` stores pixel-frame duration per action segment.\n\nLTXDirector does not simply concatenate text. It tokenizes global + local prompts, maps token ranges, then patches LTX cross-attention with Prompt Relay temporal masks. That is the mechanism that makes action descriptions reach the model at the correct time.\n\nEdit actions in the Local Prompt track. Keyframes are visual frame anchors only: image, time, and strength. Camera track uses fixed LTX camera presets only: static, dolly_in, dolly_out, dolly_left, dolly_right, jib_up, jib_down, focus_shift, or none. Keep each local prompt action-focused: expression, mouth movement, hand gesture, and body pose. Avoid stuffing scene/style into every action block.\n\nIC-Control is now wired to a real IC-LoRA path: load a control/depth/motion video in the outer IC CONTROL VIDEO / IMAGE INPUT node. The Director IC-Control track start and strength are read by ShezwDirectorICLoRAGuide inside both sampling stages. Required LoRA: ltx-2.3-22b-ic-lora-union-control-ref0.5.safetensors.\n\nReference channel is now actively consumed: Add Reference images are loaded into guide_data.references and ShezwDirectorICLoRAGuide applies up to 8 references as low-strength IC-LoRA visual reference guides before applying the control video guide.\n\nFinal-frame PNG output: the Decode subgraph also exposes the VAEDecode image batch. GetImageRangeFromBatch uses start_index=-1 and num_frames=1, then SaveImageKJ writes a separate PNG with prefix `video/camera-last-frame`.\n\nVideo IC-Control is automatic and optional: leave the optional video path empty to skip it; provide a video path to enable IC guide without rewiring.\n\n## Global Prefix / Story Script\n\nUse GLOBAL PREFIX to create a per-run ID. Prefix-aware save nodes write under `video/<id>/...`. Use STORY SCRIPT to import/store/export `*-ss.json` content-only scripts."
       ],
       "color": "#322",
       "bgcolor": "#533"
@@ -942,7 +1061,7 @@
         "Node name for S&R": "SaveImageKJ"
       },
       "widgets_values": [
-        "video/camera-last-frame",
+        "video/ltx-director-pro-camera-tail-frame",
         "output",
         ""
       ],

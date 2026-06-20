@@ -1222,6 +1222,9 @@ class TimelineEditor {
   }
 
   async queueCurrentGraphPrompt() {
+    if (typeof window.shezwApplyGlobalPrefixToGraph === "function") {
+      window.shezwApplyGlobalPrefixToGraph();
+    }
     if (app?.graphToPrompt && api) {
       const prompt = await app.graphToPrompt();
       if (typeof api.queuePrompt === "function") {
@@ -1302,22 +1305,31 @@ class TimelineEditor {
   }
 
   getTailSavePrefix() {
+    const nodes = app?.graph?._nodes || [];
+    const node = nodes.find((candidate) => this.isTailSaveNode(candidate));
+    const prefixWidget = node?.widgets?.find((w) => w.name === "filename_prefix") || node?.widgets?.[0];
+    if (prefixWidget?.value) return `${prefixWidget.value}`.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
     const configuredPrefix = this.timeline?.meta?.tailFramePrefix;
     if (typeof configuredPrefix === "string" && configuredPrefix.trim()) {
       return configuredPrefix.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
     }
-    const nodes = app?.graph?._nodes || [];
-    const node = nodes.find((candidate) => this.isTailSaveNode(candidate));
-    const prefixWidget = node?.widgets?.find((w) => w.name === "filename_prefix") || node?.widgets?.[0];
-    return `${prefixWidget?.value || "video/long-auto-tail-frame"}`.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+    return "video/ltx-director-pro-tail-frame";
   }
 
   getSegmentVideoPrefix() {
+    const nodes = app?.graph?._nodes || [];
+    const node = nodes.find((candidate) => {
+      const title = `${candidate?.title || ""}`.toLowerCase();
+      const type = `${candidate?.type || ""}`.toLowerCase();
+      return (type.includes("save") || title.includes("save")) && (title.includes("segment video") || title.includes("director-pro video"));
+    });
+    const prefixWidget = node?.widgets?.find((w) => w.name === "filename_prefix") || node?.widgets?.[0];
+    if (prefixWidget?.value) return `${prefixWidget.value}`.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
     const configuredPrefix = this.timeline?.meta?.segmentVideoPrefix;
     if (typeof configuredPrefix === "string" && configuredPrefix.trim()) {
       return configuredPrefix.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
     }
-    return "video/long-auto-segment";
+    return "video/ltx-director-pro-segment";
   }
 
   async fetchLatestTailFrame(sinceSeconds = 0, retryDelays = [0, 5000, 10000]) {
@@ -1564,6 +1576,7 @@ class TimelineEditor {
     if (!this.timeline.meta) this.timeline.meta = {};
     const startIndex = clamp(parseInt(options.startIndex ?? 0, 10) || 0, 0, Math.max(0, plan.length - 1));
     const skipCompleted = options.skipCompleted !== false;
+    const stopAfterOne = !!options.stopAfterOne;
     const originalMeta = { ...this.timeline.meta };
     let previousTailFrame = originalMeta.previousTailFrame || this.findPreviousCompletedTail(plan, startIndex);
     this._isQueueingAllCuts = true;
@@ -1602,6 +1615,7 @@ class TimelineEditor {
           video: segmentVideo,
         });
         this.commitChanges(true);
+        if (stopAfterOne) break;
       }
     } catch (err) {
       console.error("[Shezw LongAuto] Failed to queue all cuts", err);
@@ -5099,6 +5113,19 @@ class TimelineEditor {
         });
       });
 
+      const regenBtn = document.createElement("button");
+      regenBtn.className = "pr-mini-btn";
+      regenBtn.textContent = "Re-gen";
+      regenBtn.title = "Regenerate only this segment, using a keyframe or the previous completed tail frame as the start frame";
+      regenBtn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        this.resetSegmentMemory(seg);
+        this.dismissSettingsMenu();
+        this.queueAllCutSegments({ startIndex: seg.index, skipCompleted: false, stopAfterOne: true }).catch((err) => {
+          console.error("[Shezw LongAuto] Re-gen failed", err);
+        });
+      });
+
       const resetBtn = document.createElement("button");
       resetBtn.className = "pr-mini-btn danger";
       resetBtn.textContent = "Reset";
@@ -5111,6 +5138,7 @@ class TimelineEditor {
       });
 
       actions.appendChild(continueBtn);
+      actions.appendChild(regenBtn);
       actions.appendChild(resetBtn);
 
       row.addEventListener("click", () => {

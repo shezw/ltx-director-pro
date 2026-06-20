@@ -8,6 +8,7 @@ from .ltx_director import LTXDirector
 from .ltx_director_guide import LTXDirectorGuide
 from .shezw_iclora_params import ShezwDirectorICLoRAParams, ShezwDirectorICLoRAGuide
 from .upscale_chunker import ShezwUpscaleChunker
+from .workflow_tools import ShezwGlobalPrefix, ShezwStoryScript
 from comfy_api.latest import ComfyExtension, io
 from typing_extensions import override
 from aiohttp import web
@@ -16,6 +17,7 @@ import folder_paths
 import os
 import glob
 import time
+import json
 import shutil
 import subprocess
 import tempfile
@@ -43,6 +45,33 @@ def _safe_rel_path(path: str) -> str:
     if not path or path.startswith("/") or ".." in path.split("/"):
         raise ValueError("Invalid relative path")
     return path
+
+
+def _safe_story_filename(filename: str) -> str:
+    filename = os.path.basename((filename or "").replace("\\", "/").strip())
+    if not filename:
+        filename = "story-ss.json"
+    if not filename.endswith("-ss.json"):
+        stem = filename[:-5] if filename.endswith(".json") else filename
+        filename = f"{stem}-ss.json"
+    return filename
+
+
+def _story_scripts_dir() -> str:
+    path = os.path.join(folder_paths.get_output_directory(), "story-scripts")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _resolve_export_dir(export_dir: str) -> str:
+    export_dir = (export_dir or "").strip()
+    if not export_dir:
+        return _story_scripts_dir()
+    export_dir = os.path.expanduser(export_dir)
+    if not os.path.isabs(export_dir):
+        export_dir = os.path.join(folder_paths.get_output_directory(), export_dir)
+    os.makedirs(export_dir, exist_ok=True)
+    return export_dir
 
 
 def _base_dir_for_type(file_type: str) -> str:
@@ -785,6 +814,72 @@ async def shezw_upscale_cleanup(request):
         return web.json_response({"ok": False, "error": str(exc)}, status=400)
 
 
+@PromptServer.instance.routes.get("/shezw/story_script/list")
+async def shezw_story_script_list(request):
+    try:
+        base = _story_scripts_dir()
+        files = []
+        for path in glob.glob(os.path.join(base, "*-ss.json")):
+            if os.path.isfile(path):
+                files.append({
+                    "filename": os.path.basename(path),
+                    "path": path,
+                    "mtime": os.path.getmtime(path),
+                    "size": os.path.getsize(path),
+                })
+        files.sort(key=lambda item: item["mtime"], reverse=True)
+        return web.json_response({"ok": True, "files": files})
+    except Exception as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
+
+
+@PromptServer.instance.routes.get("/shezw/story_script/load")
+async def shezw_story_script_load(request):
+    try:
+        filename = _safe_story_filename(request.query.get("filename", "story-ss.json"))
+        path = os.path.join(_story_scripts_dir(), filename)
+        if not os.path.isfile(path):
+            raise FileNotFoundError(filename)
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return web.json_response({"ok": True, "filename": filename, "story_script": data})
+    except Exception as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
+
+
+@PromptServer.instance.routes.post("/shezw/story_script/save")
+async def shezw_story_script_save(request):
+    try:
+        payload = await request.json()
+        filename = _safe_story_filename(payload.get("filename") or payload.get("script_name") or "story-ss.json")
+        story_script = payload.get("story_script")
+        if isinstance(story_script, str):
+            story_script = json.loads(story_script or "{}")
+        if not isinstance(story_script, dict):
+            raise ValueError("story_script must be an object")
+
+        targets = []
+        store_path = os.path.join(_story_scripts_dir(), filename)
+        targets.append(store_path)
+        if payload.get("export_dir"):
+            export_path = os.path.join(_resolve_export_dir(payload.get("export_dir")), filename)
+            if os.path.abspath(export_path) != os.path.abspath(store_path):
+                targets.append(export_path)
+
+        for path in targets:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(story_script, f, ensure_ascii=False, indent=2)
+                f.write("\n")
+
+        return web.json_response({
+            "ok": True,
+            "filename": filename,
+            "paths": targets,
+        })
+    except Exception as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
+
+
 @PromptServer.instance.routes.get("/shezw/upscale/find_segments")
 async def shezw_upscale_find_segments(request):
     try:
@@ -847,6 +942,8 @@ NODE_CLASS_MAPPINGS = {
     "ShezwDirectorICLoRAParams": ShezwDirectorICLoRAParams,
     "ShezwDirectorICLoRAGuide": ShezwDirectorICLoRAGuide,
     "ShezwUpscaleChunker": ShezwUpscaleChunker,
+    "ShezwGlobalPrefix": ShezwGlobalPrefix,
+    "ShezwStoryScript": ShezwStoryScript,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -861,6 +958,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ShezwDirectorICLoRAParams": "Shezw Director IC-LoRA Params",
     "ShezwDirectorICLoRAGuide": "Shezw Director IC-LoRA Guide",
     "ShezwUpscaleChunker": "Shezw Upscale Chunker",
+    "ShezwGlobalPrefix": "Shezw Global Prefix",
+    "ShezwStoryScript": "Shezw Story Script",
 }
 
 WEB_DIRECTORY = "./js"
