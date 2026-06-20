@@ -251,17 +251,14 @@ function storyScriptFromLegacyWorkflow(data, storyNode) {
     global_prefix: globalPrefix,
     created_at: new Date().toISOString(),
     imported_from_schema: data.version ? `workflow-${data.version}` : "legacy-workflow",
-    ss_struct: struct,
     nodes: entries,
   };
 }
 
 function normalizeImportedStoryScript(data, storyNode) {
   if (data?.schema === "ltx-director-pro.story-script.v1" && Array.isArray(data.nodes)) {
-    return {
-      ...data,
-      ss_struct: mergeStructWithKnownWidgets(data.ss_struct || getAllowedStruct(storyNode)),
-    };
+    const { ss_struct, ...story } = data;
+    return story;
   }
   return storyScriptFromLegacyWorkflow(data, storyNode);
 }
@@ -300,7 +297,6 @@ function collectStoryScript(storyNode) {
     workflow_id: workflowId,
     global_prefix: getGlobalPrefix(),
     created_at: new Date().toISOString(),
-    ss_struct: struct,
     nodes,
   };
 }
@@ -336,12 +332,9 @@ function applyStoryScript(story, storyNode) {
       || nodeList.find((node) => node.type === "ShezwGlobalPrefix");
     setWidgetValue(prefixNode, "global_prefix", story.global_prefix);
   }
-  if (story.ss_struct) {
-    setNodeProp(storyNode, "ss_struct", mergeStructWithKnownWidgets(story.ss_struct));
-    setWidgetValue(storyNode, "ss_struct", JSON.stringify(mergeStructWithKnownWidgets(story.ss_struct), null, 2));
-  }
-  setNodeProp(storyNode, "story_script", story);
-  setWidgetValue(storyNode, "story_script", JSON.stringify(story, null, 2));
+  const { ss_struct, ...storyForNode } = story || {};
+  setNodeProp(storyNode, "story_script", storyForNode);
+  setWidgetValue(storyNode, "story_script", JSON.stringify(storyForNode, null, 2));
   if (typeof window.shezwApplyGlobalPrefixToGraph === "function") window.shezwApplyGlobalPrefixToGraph();
   app.graph?.setDirtyCanvas(true, true);
 }

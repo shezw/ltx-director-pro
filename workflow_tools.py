@@ -19,7 +19,6 @@ DEFAULT_SS_STRUCT = {
                 "workflow_id": "string",
                 "global_prefix": "string",
                 "created_at": "iso-datetime-string",
-                "ss_struct": "object",
                 "nodes": "array<node_entry>",
             },
         },

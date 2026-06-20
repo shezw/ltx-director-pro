@@ -32,9 +32,9 @@ pro-workflows/ltx-director-pro.json
 - 只显示全局 prefix 输入框和 `Gen` / `Apply` / `Import` / `Store` / `Export` 按钮。
 - `Gen` 会生成数字 ID，格式为 `YYYYMMDDHHMM` + 4 位随机数；`Apply` 会把当前图里 `filename_prefix`、`segment_prefix`、`output_prefix` 统一改到 `video/<ID>/...`，普通 Queue 和 `Queue Chunks` 都会自动应用。
 - `Import` / `Store` / `Export` 处理 `*-ss.json`。它只保存内容相关字段，例如 Director 时间线、关键帧、参考图、控制视频、音频、裁切、时长、分辨率等，不保存整个 Comfy workflow。`Import` 也能读取旧版完整 workflow JSON，例如旧 `long-auto.json`，并自动抽取/迁移这些内容字段。
-- Store 会强制保存 LTXDirector 的内容设置字段，包括 `duration_seconds`、`frame_rate`、`custom_width`、`custom_height`、`resize_method`、`use_custom_audio`、`divisible_by`、`img_compression`、`timeline_data` 等；旧脚本里带来的旧版 `ss_struct` 不再能裁掉这些字段。
+- Store 会强制保存 LTXDirector 的内容设置字段，包括 `duration_seconds`、`frame_rate`、`custom_width`、`custom_height`、`resize_method`、`use_custom_audio`、`divisible_by`、`img_compression`、`timeline_data` 等；导入旧脚本时即使文件里带有旧版 `ss_struct`，也只会使用当前 workflow 内置结构，不会让脚本覆盖 workflow 结构。
 - Long Auto 每段完成或重置分段记忆后，会自动把当前 story script 写回默认文件 `${GLOBAL_PREFIX}-ltx-pro-ss.json`；重新导入脚本后也会按安全 prefix 扫描 `output/video/<GLOBAL_PREFIX>/`，用已有 segment video / tail-frame 文件补全分段完成状态。
-- `workflow_id`、默认文件名、`ss_struct`、脚本缓存和 export 目录都保存在 workflow JSON 的节点属性里，不在 UI 上显示。
+- `ss_struct` 只保存在 workflow JSON 的 Meta Info 节点属性里，用来描述当前 workflow 允许导入/导出的内容字段；`*-ss.json` 不写入 `ss_struct`，只保存 story script 内容。`workflow_id`、默认文件名、脚本缓存和 export 目录也保存在 workflow 节点属性里，不在 UI 上显示。
 
 ## Long Auto
 
