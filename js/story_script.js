@@ -88,6 +88,10 @@ const WORKFLOW_WIDGET_NAMES = {
   ShezwMetaInfo: ["global_prefix"],
 };
 
+function uniqueNames(names) {
+  return [...new Set((names || []).filter(Boolean))];
+}
+
 function getStoryNode() {
   return (app?.graph?._nodes || []).find((node) => node.type === "ShezwMetaInfo")
     || (app?.graph?._nodes || []).find((node) => node.type === "ShezwStoryScript");
@@ -103,7 +107,23 @@ function getGlobalPrefix() {
 function getAllowedStruct(storyNode) {
   const raw = nodeProp(storyNode, "ss_struct", "{}");
   const parsed = parseJson(raw, {});
-  return Array.isArray(parsed.fields) ? parsed : { fields: [] };
+  return mergeStructWithKnownWidgets(Array.isArray(parsed.fields) ? parsed : { fields: [] });
+}
+
+function mergeStructWithKnownWidgets(struct) {
+  const next = {
+    ...(struct || {}),
+    fields: Array.isArray(struct?.fields) ? [...struct.fields] : [],
+  };
+  for (const [nodeType, widgets] of Object.entries(WORKFLOW_WIDGET_NAMES)) {
+    const existing = next.fields.find((field) => field.node_type === nodeType && !field.node_id && !field.title);
+    if (existing) {
+      existing.widgets = uniqueNames([...(existing.widgets || []), ...widgets]);
+    } else {
+      next.fields.push({ node_type: nodeType, widgets: uniqueNames(widgets) });
+    }
+  }
+  return next;
 }
 
 function getAllowedWidgets(struct, node) {
@@ -114,6 +134,7 @@ function getAllowedWidgets(struct, node) {
     return field.widgets || field.widget;
   });
   const names = new Set();
+  for (const name of WORKFLOW_WIDGET_NAMES[node?.type] || []) names.add(name);
   for (const entry of entries) {
     if (entry.widget) names.add(entry.widget);
     for (const name of entry.widgets || []) names.add(name);
@@ -236,7 +257,12 @@ function storyScriptFromLegacyWorkflow(data, storyNode) {
 }
 
 function normalizeImportedStoryScript(data, storyNode) {
-  if (data?.schema === "ltx-director-pro.story-script.v1" && Array.isArray(data.nodes)) return data;
+  if (data?.schema === "ltx-director-pro.story-script.v1" && Array.isArray(data.nodes)) {
+    return {
+      ...data,
+      ss_struct: mergeStructWithKnownWidgets(data.ss_struct || getAllowedStruct(storyNode)),
+    };
+  }
   return storyScriptFromLegacyWorkflow(data, storyNode);
 }
 
@@ -256,6 +282,9 @@ function collectStoryScript(storyNode) {
     const widgets = {};
     for (const widget of node.widgets || []) {
       if (allowed.has(widget.name)) widgets[widget.name] = widget.value;
+    }
+    if (node._timelineEditor && typeof node._timelineEditor.getStoryScriptWidgets === "function") {
+      Object.assign(widgets, node._timelineEditor.getStoryScriptWidgets());
     }
     if (Object.keys(widgets).length) {
       nodes.push({
@@ -306,6 +335,10 @@ function applyStoryScript(story, storyNode) {
     const prefixNode = nodeList.find((node) => node.type === "ShezwMetaInfo")
       || nodeList.find((node) => node.type === "ShezwGlobalPrefix");
     setWidgetValue(prefixNode, "global_prefix", story.global_prefix);
+  }
+  if (story.ss_struct) {
+    setNodeProp(storyNode, "ss_struct", mergeStructWithKnownWidgets(story.ss_struct));
+    setWidgetValue(storyNode, "ss_struct", JSON.stringify(mergeStructWithKnownWidgets(story.ss_struct), null, 2));
   }
   setNodeProp(storyNode, "story_script", story);
   setWidgetValue(storyNode, "story_script", JSON.stringify(story, null, 2));

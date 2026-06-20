@@ -1595,6 +1595,42 @@ class TimelineEditor {
     this.commitChanges(true);
   }
 
+  getStoryScriptWidgets() {
+    this.prepareStoryScriptStore();
+    const names = [
+      "global_prompt",
+      "duration_frames",
+      "duration_seconds",
+      "timeline_data",
+      "local_prompts",
+      "segment_lengths",
+      "epsilon",
+      "guide_strength",
+      "use_custom_audio",
+      "frame_rate",
+      "display_mode",
+      "custom_width",
+      "custom_height",
+      "resize_method",
+      "divisible_by",
+      "img_compression",
+      "metadata",
+    ];
+    const widgets = {};
+    for (const name of names) {
+      const widget = this.node.widgets?.find((w) => w.name === name);
+      if (widget) widgets[name] = widget.value;
+    }
+    if (widgets.duration_seconds === undefined) {
+      widgets.duration_seconds = parseFloat((this.getDurationFrames() / this.getFrameRate()).toFixed(3));
+    }
+    if (widgets.duration_frames === undefined) widgets.duration_frames = this.getDurationFrames();
+    if (widgets.frame_rate === undefined) widgets.frame_rate = this.getFrameRate();
+    if (widgets.timeline_data === undefined && this.timelineDataWidget) widgets.timeline_data = this.timelineDataWidget.value;
+    if (widgets.use_custom_audio === undefined) widgets.use_custom_audio = false;
+    return widgets;
+  }
+
   segmentMemoryKey(seg) {
     return `${Math.round(seg.start)}:${Math.round(seg.end)}:${(seg.reasons || []).join("+")}`;
   }

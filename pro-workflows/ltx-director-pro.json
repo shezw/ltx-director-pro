@@ -98,7 +98,12 @@
                 "guide_strength",
                 "custom_width",
                 "custom_height",
-                "resize_method"
+                "resize_method",
+                "display_mode",
+                "epsilon",
+                "divisible_by",
+                "img_compression",
+                "metadata"
               ]
             },
             {
