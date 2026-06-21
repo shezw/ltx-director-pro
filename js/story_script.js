@@ -104,6 +104,9 @@ function getGlobalPrefix() {
   return `${widgetValue(node, "global_prefix", "") || ""}`.trim();
 }
 
+let activeStoryScriptFileHandle = null;
+let activeStoryScriptFileName = "";
+
 function getAllowedStruct(storyNode) {
   const raw = nodeProp(storyNode, "ss_struct", "{}");
   const parsed = parseJson(raw, {});
@@ -368,11 +371,29 @@ function downloadJson(filename, data) {
   URL.revokeObjectURL(url);
 }
 
-async function saveStoryScript(storyNode, exportDir = "") {
+function formatSavedPaths(data) {
+  const paths = Array.isArray(data?.paths) ? data.paths.filter(Boolean) : [];
+  if (!paths.length) return data?.filename || "-";
+  return paths.join("\n");
+}
+
+async function writeStoryScriptHandle(fileHandle, story) {
+  const writable = await fileHandle.createWritable();
+  try {
+    await writable.write(JSON.stringify(story, null, 2) + "\n");
+  } finally {
+    await writable.close();
+  }
+}
+
+async function saveStoryScript(storyNode, exportDir = "", options = {}) {
   const story = stripStoryScriptStruct(collectStoryScript(storyNode));
   const filename = storyFilename(storyNode, story);
   setNodeProp(storyNode, "story_script", story);
   setWidgetValue(storyNode, "story_script", JSON.stringify(story, null, 2));
+  if (options.fileHandle) {
+    await writeStoryScriptHandle(options.fileHandle, story);
+  }
   const resp = await api.fetchApi("/shezw/story_script/save", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -384,7 +405,10 @@ async function saveStoryScript(storyNode, exportDir = "") {
   });
   const data = await resp.json();
   if (!resp.ok || !data.ok) throw new Error(data.error || "Story script save failed");
-  return data;
+  return {
+    ...data,
+    file_handle_name: options.fileHandle?.name || "",
+  };
 }
 
 window.shezwStoreCurrentStoryScript = async function (exportDir = "") {
@@ -496,8 +520,36 @@ function buildMetaPanel(node) {
     else status.textContent = `Prefix is empty\nImported from ${importedFrom}`;
   });
 
-  importBtn.addEventListener("click", (ev) => {
+  async function importStoryFile(file, handle = null) {
+    const imported = JSON.parse(await file.text());
+    const story = normalizeImportedStoryScript(imported, node);
+    if (!story) throw new Error("Unsupported story script/workflow format");
+    activeStoryScriptFileHandle = handle;
+    activeStoryScriptFileName = file.name || handle?.name || "";
+    applyStoryScript(story, node);
+    importedFrom = activeStoryScriptFileName || "-";
+    setStatus(getGlobalPrefix());
+  }
+
+  importBtn.addEventListener("click", async (ev) => {
     ev.stopPropagation();
+    if (window.showOpenFilePicker) {
+      try {
+        const [handle] = await window.showOpenFilePicker({
+          multiple: false,
+          types: [{
+            description: "Story script JSON",
+            accept: { "application/json": [".json"] },
+          }],
+        });
+        if (!handle) return;
+        await importStoryFile(await handle.getFile(), handle);
+        return;
+      } catch (err) {
+        if (err?.name === "AbortError") return;
+        console.warn("[Shezw MetaInfo] File System Access import failed, using fallback input", err);
+      }
+    }
     const input = document.createElement("input");
     input.type = "file";
     input.accept = ".json";
@@ -505,12 +557,7 @@ function buildMetaPanel(node) {
       const file = input.files?.[0];
       if (!file) return;
       try {
-        const imported = JSON.parse(await file.text());
-        const story = normalizeImportedStoryScript(imported, node);
-        if (!story) throw new Error("Unsupported story script/workflow format");
-        applyStoryScript(story, node);
-        importedFrom = file.name;
-        setStatus(getGlobalPrefix());
+        await importStoryFile(file, null);
       } catch (err) {
         console.error("[Shezw MetaInfo] import failed", err);
         status.textContent = `Import failed: ${err.message || err}`;
@@ -523,8 +570,9 @@ function buildMetaPanel(node) {
     ev.stopPropagation();
     storeBtn.disabled = true;
     try {
-      const data = await saveStoryScript(node, "");
-      status.textContent = `Applied ${getGlobalPrefix() || "-"}\nStored ${data.filename}`;
+      const data = await saveStoryScript(node, "", { fileHandle: activeStoryScriptFileHandle });
+      const handleLine = data.file_handle_name ? `\nUpdated import file ${data.file_handle_name}` : "";
+      status.textContent = `Applied ${getGlobalPrefix() || "-"}\nStored ${formatSavedPaths(data)}${handleLine}`;
     } catch (err) {
       console.error("[Shezw MetaInfo] store failed", err);
       status.textContent = `Store failed: ${err.message || err}`;
@@ -542,7 +590,7 @@ function buildMetaPanel(node) {
       const exportDir = `${nodeProp(node, "export_dir", "") || ""}`.trim();
       if (exportDir) {
         const data = await saveStoryScript(node, exportDir);
-        status.textContent = `Applied ${getGlobalPrefix() || "-"}\nExported ${data.filename}`;
+        status.textContent = `Applied ${getGlobalPrefix() || "-"}\nExported ${formatSavedPaths(data)}`;
       } else {
         setNodeProp(node, "story_script", story);
         setWidgetValue(node, "story_script", JSON.stringify(story, null, 2));
