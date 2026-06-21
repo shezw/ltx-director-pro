@@ -35,6 +35,7 @@ pro-workflows/ltx-director-pro.json
 - Store 会强制保存 LTXDirector 的内容设置字段，包括 `duration_seconds`、`frame_rate`、`custom_width`、`custom_height`、`resize_method`、`use_custom_audio`、`divisible_by`、`img_compression`、`timeline_data` 等；导入旧脚本时即使文件里带有旧版 `ss_struct`，也只会使用当前 workflow 内置结构，不会让脚本覆盖 workflow 结构。
 - Long Auto 每段完成或重置分段记忆后，会自动把当前 story script 写回默认文件 `${GLOBAL_PREFIX}-ltx-pro-ss.json`；重新导入脚本后也会按安全 prefix 扫描 `output/video/<GLOBAL_PREFIX>/`，用已有 segment video / tail-frame 文件补全分段完成状态。
 - `ss_struct` 只保存在 workflow JSON 的 Meta Info 节点属性里，用来描述当前 workflow 允许导入/导出的内容字段；`*-ss.json` 不写入 `ss_struct`，只保存 story script 内容。`workflow_id`、默认文件名、脚本缓存和 export 目录也保存在 workflow 节点属性里，不在 UI 上显示。
+- Meta Info 还保存 `ui_language`，当前支持 English / 中文。选择语言并确认后，会刷新 Meta Info 和 Director 时间线的基础 UI 文案；该字段属于 workflow 设置，不写入 story script。
 
 ![Meta Info panel for global prefix and story script actions](pro-workflows/meta-info.png)
 

@@ -88,6 +88,86 @@ const WORKFLOW_WIDGET_NAMES = {
   ShezwMetaInfo: ["global_prefix"],
 };
 
+const UI_LANGUAGES = {
+  en: "English",
+  zh: "中文",
+};
+
+const I18N = {
+  en: {
+    prefixId: "Prefix-Id",
+    storyScript: "Story script",
+    language: "Language",
+    gen: "Gen",
+    apply: "Apply",
+    import: "Import",
+    store: "Store",
+    export: "Export",
+    confirm: "Confirm",
+    applied: "Applied",
+    importedFrom: "Imported from",
+    prefixEmpty: "Prefix is empty",
+    importFailed: "Import failed",
+    storeFailed: "Store failed",
+    exportFailed: "Export failed",
+    stored: "Stored",
+    exported: "Exported",
+    downloaded: "Downloaded",
+    updatedImportFile: "Updated import file",
+  },
+  zh: {
+    prefixId: "前缀 ID",
+    storyScript: "故事脚本",
+    language: "语言",
+    gen: "生成",
+    apply: "应用",
+    import: "导入",
+    store: "存储",
+    export: "导出",
+    confirm: "确认",
+    applied: "已应用",
+    importedFrom: "导入自",
+    prefixEmpty: "Prefix 为空",
+    importFailed: "导入失败",
+    storeFailed: "存储失败",
+    exportFailed: "导出失败",
+    stored: "已存储",
+    exported: "已导出",
+    downloaded: "已下载",
+    updatedImportFile: "已更新导入文件",
+  },
+};
+
+function normalizeUILanguage(value) {
+  return Object.prototype.hasOwnProperty.call(UI_LANGUAGES, value) ? value : "en";
+}
+
+function getUILanguage() {
+  return normalizeUILanguage(`${nodeProp(getStoryNode(), "ui_language", "en") || "en"}`.trim());
+}
+
+function t(key, fallback = key) {
+  const lang = getUILanguage();
+  return I18N[lang]?.[key] || I18N.en[key] || fallback;
+}
+
+function setUILanguage(lang) {
+  const next = normalizeUILanguage(lang);
+  const storyNode = getStoryNode();
+  if (storyNode) {
+    setNodeProp(storyNode, "ui_language", next);
+    setWidgetValue(storyNode, "ui_language", next, { silent: true });
+  }
+  window.shezwCurrentUILanguage = next;
+  window.dispatchEvent(new CustomEvent("shezw-ui-language-change", { detail: { language: next } }));
+  app.graph?.setDirtyCanvas(true, true);
+  return next;
+}
+
+window.shezwGetUILanguage = getUILanguage;
+window.shezwSetUILanguage = setUILanguage;
+window.shezwT = (key, fallback = key) => t(key, fallback);
+
 function uniqueNames(names) {
   return [...new Set((names || []).filter(Boolean))];
 }
@@ -469,11 +549,15 @@ function buildMetaPanel(node) {
       whiteSpace: "nowrap",
     });
     row.appendChild(title);
-    return row;
+    return { row, title };
   };
 
-  const prefixRow = makeRow("Prefix-Id");
-  const scriptRow = makeRow("Story script");
+  const prefixLine = makeRow(t("prefixId"));
+  const scriptLine = makeRow(t("storyScript"));
+  const languageLine = makeRow(t("language"));
+  const prefixRow = prefixLine.row;
+  const scriptRow = scriptLine.row;
+  const languageRow = languageLine.row;
   let importedFrom = "-";
   const status = document.createElement("div");
   Object.assign(status.style, {
@@ -485,18 +569,53 @@ function buildMetaPanel(node) {
     whiteSpace: "pre-line",
   });
   const setStatus = (prefix) => {
-    status.textContent = `Applied ${prefix || "-"}\nImported from ${importedFrom}`;
+    status.textContent = `${t("applied")} ${prefix || "-"}\n${t("importedFrom")} ${importedFrom}`;
   };
   setStatus(getGlobalPrefix());
 
-  const genBtn = makeButton("Gen");
-  const applyBtn = makeButton("Apply");
-  const importBtn = makeButton("Import");
-  const storeBtn = makeButton("Store");
-  const exportBtn = makeButton("Export");
+  const genBtn = makeButton(t("gen"));
+  const applyBtn = makeButton(t("apply"));
+  const importBtn = makeButton(t("import"));
+  const storeBtn = makeButton(t("store"));
+  const exportBtn = makeButton(t("export"));
+  const confirmLangBtn = makeButton(t("confirm"));
+  const languageSelect = document.createElement("select");
+  Object.assign(languageSelect.style, {
+    border: "1px solid #555",
+    background: "#202020",
+    color: "#f2f2f2",
+    borderRadius: "5px",
+    padding: "6px 8px",
+    cursor: "pointer",
+    fontSize: "12px",
+    minHeight: "30px",
+    minWidth: "96px",
+  });
+  for (const [value, label] of Object.entries(UI_LANGUAGES)) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    if (value === getUILanguage()) option.selected = true;
+    languageSelect.appendChild(option);
+  }
   prefixRow.append(genBtn, applyBtn);
   scriptRow.append(importBtn, storeBtn, exportBtn);
-  wrap.append(prefixRow, scriptRow, status);
+  languageRow.append(languageSelect, confirmLangBtn);
+  wrap.append(prefixRow, scriptRow, languageRow, status);
+
+  const refreshText = () => {
+    prefixLine.title.textContent = t("prefixId");
+    scriptLine.title.textContent = t("storyScript");
+    languageLine.title.textContent = t("language");
+    genBtn.textContent = t("gen");
+    applyBtn.textContent = t("apply");
+    importBtn.textContent = t("import");
+    storeBtn.textContent = t("store");
+    exportBtn.textContent = t("export");
+    confirmLangBtn.textContent = t("confirm");
+    languageSelect.value = getUILanguage();
+    setStatus(getGlobalPrefix());
+  };
 
   genBtn.addEventListener("click", (ev) => {
     ev.stopPropagation();
@@ -517,7 +636,13 @@ function buildMetaPanel(node) {
       ? window.shezwApplyGlobalPrefixToGraph()
       : getGlobalPrefix();
     if (prefix) setStatus(prefix);
-    else status.textContent = `Prefix is empty\nImported from ${importedFrom}`;
+    else status.textContent = `${t("prefixEmpty")}\n${t("importedFrom")} ${importedFrom}`;
+  });
+
+  confirmLangBtn.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    setUILanguage(languageSelect.value);
+    refreshText();
   });
 
   async function importStoryFile(file, handle = null) {
@@ -560,7 +685,7 @@ function buildMetaPanel(node) {
         await importStoryFile(file, null);
       } catch (err) {
         console.error("[Shezw MetaInfo] import failed", err);
-        status.textContent = `Import failed: ${err.message || err}`;
+        status.textContent = `${t("importFailed")}: ${err.message || err}`;
       }
     });
     input.click();
@@ -571,11 +696,11 @@ function buildMetaPanel(node) {
     storeBtn.disabled = true;
     try {
       const data = await saveStoryScript(node, "", { fileHandle: activeStoryScriptFileHandle });
-      const handleLine = data.file_handle_name ? `\nUpdated import file ${data.file_handle_name}` : "";
-      status.textContent = `Applied ${getGlobalPrefix() || "-"}\nStored ${formatSavedPaths(data)}${handleLine}`;
+      const handleLine = data.file_handle_name ? `\n${t("updatedImportFile")} ${data.file_handle_name}` : "";
+      status.textContent = `${t("applied")} ${getGlobalPrefix() || "-"}\n${t("stored")} ${formatSavedPaths(data)}${handleLine}`;
     } catch (err) {
       console.error("[Shezw MetaInfo] store failed", err);
-      status.textContent = `Store failed: ${err.message || err}`;
+      status.textContent = `${t("storeFailed")}: ${err.message || err}`;
     } finally {
       storeBtn.disabled = false;
     }
@@ -590,21 +715,22 @@ function buildMetaPanel(node) {
       const exportDir = `${nodeProp(node, "export_dir", "") || ""}`.trim();
       if (exportDir) {
         const data = await saveStoryScript(node, exportDir);
-        status.textContent = `Applied ${getGlobalPrefix() || "-"}\nExported ${formatSavedPaths(data)}`;
+        status.textContent = `${t("applied")} ${getGlobalPrefix() || "-"}\n${t("exported")} ${formatSavedPaths(data)}`;
       } else {
         setNodeProp(node, "story_script", story);
         setWidgetValue(node, "story_script", JSON.stringify(story, null, 2));
         downloadJson(filename, story);
-        status.textContent = `Applied ${getGlobalPrefix() || "-"}\nDownloaded ${filename}`;
+        status.textContent = `${t("applied")} ${getGlobalPrefix() || "-"}\n${t("downloaded")} ${filename}`;
       }
     } catch (err) {
       console.error("[Shezw MetaInfo] export failed", err);
-      status.textContent = `Export failed: ${err.message || err}`;
+      status.textContent = `${t("exportFailed")}: ${err.message || err}`;
     } finally {
       exportBtn.disabled = false;
     }
   });
 
+  window.addEventListener("shezw-ui-language-change", refreshText);
   return wrap;
 }
 
@@ -616,14 +742,14 @@ app.registerExtension({
     nodeType.prototype.onNodeCreated = function () {
       const r = onNodeCreated ? onNodeCreated.apply(this, arguments) : undefined;
       const node = this;
-      for (const name of ["workflow_id", "script_name", "ss_struct", "story_script", "export_dir"]) {
+      for (const name of ["workflow_id", "script_name", "ss_struct", "story_script", "export_dir", "ui_language"]) {
         hideWidget(node, name);
       }
       const wrap = buildMetaPanel(node);
 
       setTimeout(() => {
         const domWidget = node.addDOMWidget("meta_info_tools", "div", wrap, { serialize: false });
-        domWidget.computeSize = () => [360, 102];
+        domWidget.computeSize = () => [360, 138];
         if (node.size[0] < 420) node.size[0] = 420;
         app.graph?.setDirtyCanvas(true, true);
       }, 50);

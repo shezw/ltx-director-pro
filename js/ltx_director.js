@@ -30,6 +30,149 @@ const CAMERA_MOTION_PRESETS = [
 ];
 const CAMERA_MOTION_BY_ID = Object.fromEntries(CAMERA_MOTION_PRESETS.map(p => [p.value, p]));
 
+const DIRECTOR_I18N = {
+  en: {
+    audio: "Audio",
+    keyframe: "KeyFrame",
+    ref: "Ref",
+    localPrompt: "Local Prompt",
+    camera: "Camera",
+    cut: "Cut",
+    icControl: "IC-Control",
+    delete: "Delete",
+    settings: "Settings",
+    showHideSegments: "Show/Hide Segments",
+    showHideSegmentsTitle: "Show/Hide long-auto segment memory",
+    queueAll: "Queue All",
+    queueAllTitle: "Render every planned long-auto cut sequentially and feed each tail frame into the next segment",
+    rendering: "Rendering...",
+    autoCut: "Auto Cut",
+    autoCutOnTitle: "Auto split at camera and IC-Control boundaries, plus manual cuts and max length",
+    autoCutOffTitle: "Only split at manual cuts and max length",
+    on: "ON",
+    off: "OFF",
+    help: "Help / Documentation",
+    start: "Start",
+    end: "End",
+    referenceEmpty: "Reference channel empty",
+    dropKeyframe: "Drop Keyframe",
+    dropAudio: "Drop Audio",
+    continue: "Continue",
+    continueTitle: "Continue rendering from this segment; completed segments are skipped",
+    regen: "Re-gen",
+    regenTitle: "Regenerate only this segment, using a keyframe or the previous completed tail frame as the start frame",
+    reset: "Reset",
+    resetTitle: "Forget this segment's completed video/tail memory",
+    done: "done",
+    pending: "pending",
+    placeholder: "placeholder",
+    videoOk: "video ok",
+    videoMissing: "video ?",
+    tailOk: "tail ok",
+    tailMissing: "tail ?",
+    longAutoSegments: "Long-Auto Segments",
+    closeSegments: "Close Segments",
+    noLongAutoMemory: "Long-auto segment memory is only available in long-auto workflows.",
+    timelineSettings: "Timeline Settings",
+    closeSettings: "Close Settings",
+    displayMode: "Display Mode",
+    frames: "Frames",
+    seconds: "Seconds",
+    renderSegment: "Render Segment",
+    output: "Output",
+    durationFrames: "Duration Frames",
+    durationSeconds: "Duration Seconds",
+    maxSegmentSeconds: "Max Segment Seconds",
+    frameRate: "Frame Rate",
+    width: "Width",
+    height: "Height",
+    resize: "Resize",
+    useGlobalPrompt: "Use Global Prompt",
+    customAudio: "Custom Audio",
+    hideWidgets: "Hide Widgets on Node",
+    showWidgets: "Show Widgets on Node",
+    manualCut: "Manual Cut",
+    localPromptSegment: "Local Prompt Segment",
+    cameraSegment: "Camera Segment",
+  },
+  zh: {
+    audio: "音频",
+    keyframe: "关键帧",
+    ref: "参考图",
+    localPrompt: "局部提示词",
+    camera: "镜头",
+    cut: "裁切",
+    icControl: "IC-Control",
+    delete: "删除",
+    settings: "设置",
+    showHideSegments: "显示/隐藏分段",
+    showHideSegmentsTitle: "显示/隐藏 Long-Auto 分段记忆",
+    queueAll: "队列全部",
+    queueAllTitle: "按顺序渲染所有计划分段，并把每段尾帧传给下一段",
+    rendering: "渲染中...",
+    autoCut: "自动裁切",
+    autoCutOnTitle: "在镜头和 IC-Control 边界自动切分，并保留手动切点和最长段限制",
+    autoCutOffTitle: "只按手动切点和最长段限制切分",
+    on: "开",
+    off: "关",
+    help: "帮助 / 文档",
+    start: "开始",
+    end: "结束",
+    referenceEmpty: "参考通道为空",
+    dropKeyframe: "拖入关键帧",
+    dropAudio: "拖入音频",
+    continue: "继续",
+    continueTitle: "从此分段继续渲染；已完成分段会跳过",
+    regen: "重生成",
+    regenTitle: "只重新生成此分段，首帧使用关键帧或上一段完成的尾帧",
+    reset: "重置",
+    resetTitle: "忘记此分段已完成的视频/尾帧记忆",
+    done: "完成",
+    pending: "等待",
+    placeholder: "占位",
+    videoOk: "视频 ok",
+    videoMissing: "视频 ?",
+    tailOk: "尾帧 ok",
+    tailMissing: "尾帧 ?",
+    longAutoSegments: "Long-Auto 分段",
+    closeSegments: "关闭分段面板",
+    noLongAutoMemory: "Long-Auto 分段记忆只在 long-auto 工作流中可用。",
+    timelineSettings: "时间线设置",
+    closeSettings: "关闭设置",
+    displayMode: "显示模式",
+    frames: "帧",
+    seconds: "秒",
+    renderSegment: "渲染分段",
+    output: "输出",
+    durationFrames: "总帧数",
+    durationSeconds: "总秒数",
+    maxSegmentSeconds: "最大分段秒数",
+    frameRate: "帧率",
+    width: "宽度",
+    height: "高度",
+    resize: "缩放",
+    useGlobalPrompt: "使用全局提示词",
+    customAudio: "自定义音频",
+    hideWidgets: "隐藏节点控件",
+    showWidgets: "显示节点控件",
+    manualCut: "手动裁切",
+    localPromptSegment: "局部提示词片段",
+    cameraSegment: "镜头片段",
+  },
+};
+
+function getUILanguage() {
+  if (typeof window.shezwGetUILanguage === "function") return window.shezwGetUILanguage();
+  const metaNode = (app?.graph?._nodes || []).find((node) => node.type === "ShezwMetaInfo");
+  const value = `${metaNode?.properties?.ui_language || window.shezwCurrentUILanguage || "en"}`.trim();
+  return Object.prototype.hasOwnProperty.call(DIRECTOR_I18N, value) ? value : "en";
+}
+
+function t(key, fallback = key) {
+  const lang = getUILanguage();
+  return DIRECTOR_I18N[lang]?.[key] || DIRECTOR_I18N.en[key] || fallback;
+}
+
 function hideWidget(w) {
   if (!w) return;
   if (!w._origType && w.type !== "hidden") w._origType = w.type;
@@ -880,6 +1023,7 @@ class TimelineEditor {
     this._boxSelectStart = null;
     this._boxSelectRect = null;
     this._settingsInputBindings = [];
+    this._languageChangeHandler = () => this.refreshLanguage();
 
     // Playback state
     this.currentFrame = 0;
@@ -914,6 +1058,7 @@ class TimelineEditor {
     this.loadImages();
 
     this.createDOM();
+    window.addEventListener("shezw-ui-language-change", this._languageChangeHandler);
     if (this.timeline.segments.length > 0) {
       this.selectedIndex = 0;
     }
@@ -986,6 +1131,7 @@ class TimelineEditor {
   destroy() {
     cancelAnimationFrame(this._renderLoop);
     this.pauseAudio();
+    window.removeEventListener("shezw-ui-language-change", this._languageChangeHandler);
     window.removeEventListener("keydown", this.handleKeyDown, true);
     window.removeEventListener("paste", this.handlePaste, true);
   }
@@ -1796,18 +1942,47 @@ class TimelineEditor {
       this.autoCutBtn.style.display = isLongAuto ? "" : "none";
       const isAutoCutOn = this.timeline.meta?.autoCut !== false;
       this.autoCutBtn.classList.toggle("active", isAutoCutOn);
-      this.autoCutBtn.innerHTML = `${ICONS.toggle} Auto Cut: ${isAutoCutOn ? "ON" : "OFF"}`;
+      this.autoCutBtn.innerHTML = `${ICONS.toggle} ${t("autoCut")}: ${isAutoCutOn ? t("on") : t("off")}`;
       this.autoCutBtn.title = isAutoCutOn
-        ? "Auto split at camera and IC-Control boundaries, plus manual cuts and max length"
-        : "Only split at manual cuts and max length";
+        ? t("autoCutOnTitle")
+        : t("autoCutOffTitle");
     }
     if (this._isQueueingAllCuts) {
       this.queueAllCutsBtn.disabled = true;
-      this.queueAllCutsBtn.innerHTML = `${ICONS.fan} Rendering...`;
+      this.queueAllCutsBtn.innerHTML = `${ICONS.fan} ${t("rendering")}`;
     } else {
       this.queueAllCutsBtn.disabled = false;
-      this.queueAllCutsBtn.innerHTML = `${ICONS.fan} Queue All`;
+      this.queueAllCutsBtn.innerHTML = `${ICONS.fan} ${t("queueAll")}`;
     }
+    this.queueAllCutsBtn.title = t("queueAllTitle");
+  }
+
+  refreshLanguage() {
+    if (this.langEls) {
+      this.langEls.uploadBtn.innerHTML = `${ICONS.bolt} ${t("keyframe")}`;
+      this.langEls.uploadReferenceBtn.innerHTML = `${ICONS.image} ${t("ref")}`;
+      this.langEls.uploadAudioBtn.innerHTML = `${ICONS.audio} ${t("audio")}`;
+      this.langEls.addTextBtn.innerHTML = `${ICONS.text} ${t("localPrompt")}`;
+      this.langEls.addCameraBtn.innerHTML = `${ICONS.camera} ${t("camera")}`;
+      this.langEls.addControlBtn.innerHTML = `${ICONS.video} ${t("icControl")}`;
+      this.langEls.addCutBtn.innerHTML = `${ICONS.scissors} ${t("cut")}`;
+      this.langEls.deleteBtn.innerHTML = `${ICONS.trash} ${t("delete")}`;
+      this.langEls.settingsBtn.title = t("settings");
+      this.langEls.segmentsBtn.innerHTML = `${ICONS.list} ${t("showHideSegments")}`;
+      this.langEls.segmentsBtn.title = t("showHideSegmentsTitle");
+      this.langEls.helpBtn.title = t("help");
+    }
+    this.updateLongAutoUI();
+    this.updateUIFromSelection();
+    this.renderReferenceChannel();
+    const anchor = this._settingsAnchorEl;
+    const wasSegmentsMenu = !!this._segmentsMenuOpen;
+    if (this._settingsMenu && anchor) {
+      this.dismissSettingsMenu();
+      if (wasSegmentsMenu) this.showSegmentsMenu(anchor);
+      else this.showSettingsMenu(anchor);
+    }
+    this.render();
   }
 
   async queueAllCutSegments(options = {}) {
@@ -1993,39 +2168,39 @@ class TimelineEditor {
 
     const uploadBtn = document.createElement("button");
     uploadBtn.className = "pr-btn";
-    uploadBtn.innerHTML = `${ICONS.bolt} KeyFrame`;
+    uploadBtn.innerHTML = `${ICONS.bolt} ${t("keyframe")}`;
     uploadBtn.addEventListener("click", () => this.fileInput.click());
 
     const uploadReferenceBtn = document.createElement("button");
     uploadReferenceBtn.className = "pr-btn";
-    uploadReferenceBtn.innerHTML = `${ICONS.image} Ref`;
+    uploadReferenceBtn.innerHTML = `${ICONS.image} ${t("ref")}`;
     uploadReferenceBtn.addEventListener("click", () => this.referenceFileInput.click());
 
     const uploadAudioBtn = document.createElement("button");
     uploadAudioBtn.className = "pr-btn";
-    uploadAudioBtn.innerHTML = `${ICONS.audio} Audio`;
+    uploadAudioBtn.innerHTML = `${ICONS.audio} ${t("audio")}`;
     uploadAudioBtn.addEventListener("click", () => this.audioFileInput.click());
 
     const addTextBtn = document.createElement("button");
     addTextBtn.className = "pr-btn";
-    addTextBtn.innerHTML = `${ICONS.text} Local Prompt`;
+    addTextBtn.innerHTML = `${ICONS.text} ${t("localPrompt")}`;
     addTextBtn.addEventListener("click", () => this.addTextSegmentFreeSpace());
 
     const addCameraBtn = document.createElement("button");
     addCameraBtn.className = "pr-btn";
-    addCameraBtn.innerHTML = `${ICONS.camera} Camera`;
+    addCameraBtn.innerHTML = `${ICONS.camera} ${t("camera")}`;
     addCameraBtn.addEventListener("click", () => this.addCameraSegmentFreeSpace());
 
     const addControlBtn = document.createElement("button");
     addControlBtn.className = "pr-btn";
-    addControlBtn.innerHTML = `${ICONS.video} IC-Control`;
+    addControlBtn.innerHTML = `${ICONS.video} ${t("icControl")}`;
     addControlBtn.addEventListener("click", () => this.addControlSegmentFreeSpace());
 
     this.autoCutBtn = document.createElement("button");
     this.autoCutBtn.className = "pr-btn";
     this.autoCutBtn.style.display = "none";
-    this.autoCutBtn.innerHTML = `${ICONS.toggle} Auto Cut: ON`;
-    this.autoCutBtn.title = "Auto split at camera and IC-Control boundaries";
+    this.autoCutBtn.innerHTML = `${ICONS.toggle} ${t("autoCut")}: ${t("on")}`;
+    this.autoCutBtn.title = t("autoCutOnTitle");
     this.autoCutBtn.addEventListener("click", () => {
       if (!this.timeline.meta) this.timeline.meta = {};
       this.timeline.meta.autoCut = this.timeline.meta.autoCut === false;
@@ -2035,21 +2210,31 @@ class TimelineEditor {
 
     this.queueAllCutsBtn = document.createElement("button");
     this.queueAllCutsBtn.className = "pr-btn";
-    this.queueAllCutsBtn.innerHTML = `${ICONS.fan} Queue All`;
-    this.queueAllCutsBtn.title = "Render every planned long-auto cut sequentially and feed each tail frame into the next segment";
+    this.queueAllCutsBtn.innerHTML = `${ICONS.fan} ${t("queueAll")}`;
+    this.queueAllCutsBtn.title = t("queueAllTitle");
     this.queueAllCutsBtn.style.display = "none";
     this.queueAllCutsBtn.addEventListener("click", () => this.queueAllCutSegments());
 
     const addCutBtn = document.createElement("button");
     addCutBtn.className = "pr-btn";
-    addCutBtn.innerHTML = `${ICONS.scissors} Cut`;
+    addCutBtn.innerHTML = `${ICONS.scissors} ${t("cut")}`;
     addCutBtn.title = "Add a manual long-auto split point at the playhead";
     addCutBtn.addEventListener("click", () => this.addCutAtFrame(this.currentFrame));
 
     const deleteBtn = document.createElement("button");
     deleteBtn.className = "pr-btn pr-btn-danger";
-    deleteBtn.innerHTML = `${ICONS.trash} Delete`;
+    deleteBtn.innerHTML = `${ICONS.trash} ${t("delete")}`;
     deleteBtn.addEventListener("click", () => this.deleteSelectedSegment());
+    this.langEls = {
+      uploadBtn,
+      uploadReferenceBtn,
+      uploadAudioBtn,
+      addTextBtn,
+      addCameraBtn,
+      addControlBtn,
+      addCutBtn,
+      deleteBtn,
+    };
 
     actionGroup.appendChild(this.fileInput);
     actionGroup.appendChild(this.referenceFileInput);
@@ -2069,7 +2254,7 @@ class TimelineEditor {
 
     this.segmentBoundsDisplay = document.createElement("div");
     this.segmentBoundsDisplay.className = "pr-segment-bounds";
-    this.segmentBoundsDisplay.textContent = "Start: - | End: -";
+    this.segmentBoundsDisplay.textContent = `${t("start")}: - | ${t("end")}: -`;
 
     this.timeCodeDisplay = document.createElement("div");
     this.timeCodeDisplay.className = "pr-timecode";
@@ -2083,7 +2268,7 @@ class TimelineEditor {
     settingsBtn.style.height = "28px";
     settingsBtn.style.boxSizing = "border-box";
     settingsBtn.innerHTML = ICONS.gear;
-    settingsBtn.title = "Settings";
+    settingsBtn.title = t("settings");
     settingsBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       if (this._settingsMenu && !this._segmentsMenuOpen) {
@@ -2098,8 +2283,8 @@ class TimelineEditor {
     segmentsBtn.style.padding = "6px 8px";
     segmentsBtn.style.height = "28px";
     segmentsBtn.style.boxSizing = "border-box";
-    segmentsBtn.innerHTML = `${ICONS.list} Show/Hide Segments`;
-    segmentsBtn.title = "Show/Hide long-auto segment memory";
+    segmentsBtn.innerHTML = `${ICONS.list} ${t("showHideSegments")}`;
+    segmentsBtn.title = t("showHideSegmentsTitle");
     segmentsBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       if (this._settingsMenu && this._segmentsMenuOpen) {
@@ -2117,7 +2302,7 @@ class TimelineEditor {
     helpBtn.style.height = "28px";
     helpBtn.style.boxSizing = "border-box";
     helpBtn.innerHTML = "?";
-    helpBtn.title = "Help / Documentation";
+    helpBtn.title = t("help");
     helpBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       window.open("https://github.com/shezw/ltx-director-pro/blob/adv-pro/README.pro.md", "_blank", "noopener,noreferrer");
@@ -2133,6 +2318,7 @@ class TimelineEditor {
     btnGroup.appendChild(helpBtn);
     btnGroup.appendChild(settingsBtn);
     rightGroup.appendChild(btnGroup);
+    Object.assign(this.langEls, { settingsBtn, segmentsBtn, helpBtn });
 
     toolbar.appendChild(rightGroup);
 
@@ -2757,7 +2943,7 @@ class TimelineEditor {
     if (!refs.length) {
       const empty = document.createElement("div");
       empty.className = "pr-reference-empty";
-      empty.textContent = "Reference channel empty";
+      empty.textContent = t("referenceEmpty");
       this.referenceChannel.appendChild(empty);
       return;
     }
@@ -3152,9 +3338,9 @@ class TimelineEditor {
       } else if (seg) {
         const startStr = this.formatTime(seg.start, true);
         const endStr = this.formatTime(seg.start + seg.length, true);
-        this.segmentBoundsDisplay.textContent = `Start: ${startStr} | End: ${endStr}`;
+        this.segmentBoundsDisplay.textContent = `${t("start")}: ${startStr} | ${t("end")}: ${endStr}`;
       } else {
-        this.segmentBoundsDisplay.textContent = "Start: - | End: -";
+        this.segmentBoundsDisplay.textContent = `${t("start")}: - | ${t("end")}: -`;
       }
     }
   }
@@ -3287,7 +3473,7 @@ class TimelineEditor {
         this.ctx.textAlign = "center";
         this.ctx.textBaseline = "middle";
         this.ctx.font = "bold 12px sans-serif";
-        this.ctx.fillText("Drop Keyframe", startX + pxWidth / 2, RULER_HEIGHT + this.blockHeight / 2);
+        this.ctx.fillText(t("dropKeyframe"), startX + pxWidth / 2, RULER_HEIGHT + this.blockHeight / 2);
       } else {
         this.ctx.fillStyle = "#000";
         this.ctx.fillRect(startX, RULER_HEIGHT + 1, pxWidth, this.blockHeight - 2);
@@ -3488,7 +3674,7 @@ class TimelineEditor {
         this.ctx.textAlign = "center";
         this.ctx.textBaseline = "middle";
         this.ctx.font = "bold 12px sans-serif";
-        this.ctx.fillText("Drop Audio", startX + pxWidth / 2, trackY + this.audioTrackHeight / 2);
+        this.ctx.fillText(t("dropAudio"), startX + pxWidth / 2, trackY + this.audioTrackHeight / 2);
       } else {
         this.drawAudioSegmentVisuals(this.ctx, seg, isSelected, trackY, this.audioTrackHeight, startX, pxWidth);
       }
@@ -5066,7 +5252,7 @@ class TimelineEditor {
 
     const delBtn = document.createElement("button");
     delBtn.className = "pr-gap-menu-btn";
-    delBtn.innerHTML = `Delete`;
+    delBtn.innerHTML = t("delete");
     delBtn.style.color = "#ff4444";
     delBtn.onclick = () => {
       this.selectionType = currentTrack;
@@ -5098,7 +5284,7 @@ class TimelineEditor {
     const clickedFrame = Math.max(0, Math.round(this.snapFrameToCut(gap.clickedFrame !== undefined ? gap.clickedFrame : gap.frameStart)));
     const cutBtn = document.createElement("button");
     cutBtn.className = "pr-gap-menu-btn";
-    cutBtn.innerHTML = `${ICONS.cut} Manual Cut`;
+    cutBtn.innerHTML = `${ICONS.cut} ${t("manualCut")}`;
     cutBtn.onclick = () => {
       this.addCutAtFrame(clickedFrame);
       this.dismissContextMenu();
@@ -5152,7 +5338,7 @@ class TimelineEditor {
     } else if (currentTrack === "prompt") {
       const promptBtn = document.createElement("button");
       promptBtn.className = "pr-gap-menu-btn";
-      promptBtn.innerHTML = `${ICONS.text} Local Prompt Segment`;
+      promptBtn.innerHTML = `${ICONS.text} ${t("localPromptSegment")}`;
       promptBtn.onclick = () => {
         this.addSegmentInGap(gap.frameStart, gap.frameEnd, "prompt");
         this.dismissContextMenu();
@@ -5161,7 +5347,7 @@ class TimelineEditor {
     } else if (currentTrack === "camera") {
       const cameraBtn = document.createElement("button");
       cameraBtn.className = "pr-gap-menu-btn";
-      cameraBtn.innerHTML = `${ICONS.camera} Camera Segment`;
+      cameraBtn.innerHTML = `${ICONS.camera} ${t("cameraSegment")}`;
       cameraBtn.onclick = () => {
         this.addSegmentInGap(gap.frameStart, gap.frameEnd, "camera");
         this.dismissContextMenu();
@@ -5376,13 +5562,13 @@ class TimelineEditor {
       const range = `${this.formatTime(seg.start, true)}-${this.formatTime(seg.end, true)}`;
       const reason = (seg.reasons || []).join(",") || "segment";
       const media = isDone
-        ? `${record.video ? "video ok" : "video ?"} / ${record.tailFrame ? "tail ok" : "tail ?"}`
-        : "placeholder";
+        ? `${record.video ? t("videoOk") : t("videoMissing")} / ${record.tailFrame ? t("tailOk") : t("tailMissing")}`
+        : t("placeholder");
       meta.textContent = `${range} · ${reason} · ${media}`;
 
       const status = document.createElement("div");
       status.className = "pr-segment-status";
-      status.textContent = isDone ? "done" : "pending";
+      status.textContent = isDone ? t("done") : t("pending");
 
       const actions = document.createElement("div");
       actions.style.display = "flex";
@@ -5390,8 +5576,8 @@ class TimelineEditor {
 
       const continueBtn = document.createElement("button");
       continueBtn.className = "pr-mini-btn";
-      continueBtn.textContent = "Continue";
-      continueBtn.title = "Continue rendering from this segment; completed segments are skipped";
+      continueBtn.textContent = t("continue");
+      continueBtn.title = t("continueTitle");
       continueBtn.addEventListener("click", (ev) => {
         ev.stopPropagation();
         this.dismissSettingsMenu();
@@ -5402,8 +5588,8 @@ class TimelineEditor {
 
       const regenBtn = document.createElement("button");
       regenBtn.className = "pr-mini-btn";
-      regenBtn.textContent = "Re-gen";
-      regenBtn.title = "Regenerate only this segment, using a keyframe or the previous completed tail frame as the start frame";
+      regenBtn.textContent = t("regen");
+      regenBtn.title = t("regenTitle");
       regenBtn.addEventListener("click", (ev) => {
         ev.stopPropagation();
         this.resetSegmentMemory(seg);
@@ -5415,8 +5601,8 @@ class TimelineEditor {
 
       const resetBtn = document.createElement("button");
       resetBtn.className = "pr-mini-btn danger";
-      resetBtn.textContent = "Reset";
-      resetBtn.title = "Forget this segment's completed video/tail memory";
+      resetBtn.textContent = t("reset");
+      resetBtn.title = t("resetTitle");
       resetBtn.disabled = !isDone;
       resetBtn.addEventListener("click", (ev) => {
         ev.stopPropagation();
@@ -5482,13 +5668,13 @@ class TimelineEditor {
     titleContainer.style.alignItems = "center";
 
     const titleText = document.createElement("span");
-    titleText.textContent = "Long-Auto Segments";
+    titleText.textContent = t("longAutoSegments");
     titleContainer.appendChild(titleText);
 
     const closeBtn = document.createElement("button");
     closeBtn.className = "pr-settings-close-btn";
     closeBtn.innerHTML = ICONS.close;
-    closeBtn.title = "Close Segments";
+    closeBtn.title = t("closeSegments");
     closeBtn.addEventListener("click", () => this.dismissSettingsMenu());
     titleContainer.appendChild(closeBtn);
     menu.appendChild(titleContainer);
@@ -5498,7 +5684,7 @@ class TimelineEditor {
     } else {
       const empty = document.createElement("div");
       empty.className = "pr-reference-empty";
-      empty.textContent = "Long-auto segment memory is only available in long-auto workflows.";
+      empty.textContent = t("noLongAutoMemory");
       menu.appendChild(empty);
     }
 
@@ -5523,13 +5709,13 @@ class TimelineEditor {
     titleContainer.style.alignItems = "center";
 
     const titleText = document.createElement("span");
-    titleText.textContent = "Timeline Settings";
+    titleText.textContent = t("timelineSettings");
     titleContainer.appendChild(titleText);
 
     const closeBtn = document.createElement("button");
     closeBtn.className = "pr-settings-close-btn";
     closeBtn.innerHTML = ICONS.close;
-    closeBtn.title = "Close Settings";
+    closeBtn.title = t("closeSettings");
     closeBtn.addEventListener("click", () => this.dismissSettingsMenu());
     titleContainer.appendChild(closeBtn);
 
@@ -5546,11 +5732,11 @@ class TimelineEditor {
 
       const framesSeg = document.createElement("div");
       framesSeg.className = "pr-segment";
-      framesSeg.textContent = "Frames";
+      framesSeg.textContent = t("frames");
 
       const secondsSeg = document.createElement("div");
       secondsSeg.className = "pr-segment";
-      secondsSeg.textContent = "Seconds";
+      secondsSeg.textContent = t("seconds");
 
       const updateActive = (val) => {
         if (val === "frames") {
@@ -5579,7 +5765,7 @@ class TimelineEditor {
       ctrl.appendChild(secondsSeg);
       ctrl.appendChild(framesSeg);
 
-      menu.appendChild(this._makeSettingRow("Display Mode", ctrl));
+      menu.appendChild(this._makeSettingRow(t("displayMode"), ctrl));
     }
 
     if (this.timeline.meta && this.timeline.meta.longAuto) {
@@ -5604,7 +5790,7 @@ class TimelineEditor {
         this.commitChanges();
       });
 
-      menu.appendChild(this._makeSettingRow("Render Segment", segmentSelect));
+      menu.appendChild(this._makeSettingRow(t("renderSegment"), segmentSelect));
     }
 
     const divider1 = document.createElement("hr");
@@ -5752,25 +5938,25 @@ class TimelineEditor {
     };
 
     const outputRows = [
-      ["Duration Frames", "duration_frames", 1, 1, 100000, false],
-      ["Duration Seconds", "duration_seconds", 0.01, 0.01, 7200, true],
-      ["Frame Rate", "frame_rate", 1, 1, 120, false],
-      ["Width", "custom_width", 8, 64, 8192, false],
-      ["Height", "custom_height", 8, 64, 8192, false],
+      [t("durationFrames"), "duration_frames", 1, 1, 100000, false],
+      [t("durationSeconds"), "duration_seconds", 0.01, 0.01, 7200, true],
+      [t("frameRate"), "frame_rate", 1, 1, 120, false],
+      [t("width"), "custom_width", 8, 64, 8192, false],
+      [t("height"), "custom_height", 8, 64, 8192, false],
     ];
     const hasOutputSettings = outputRows.some(([, name]) => this.node.widgets?.find(w => w.name === name)) ||
       this.node.widgets?.find(w => w.name === "resize_method");
     if (hasOutputSettings) {
       const outputTitle = document.createElement("div");
       outputTitle.className = "pr-settings-title";
-      outputTitle.textContent = "Output";
+      outputTitle.textContent = t("output");
       menu.appendChild(outputTitle);
       for (const [label, name, step, min, max, isFloat] of outputRows) {
         const widget = this.node.widgets?.find(w => w.name === name);
         if (widget) menu.appendChild(this._makeSettingRow(label, createScrubbableNumberControl(widget, step, min, max, isFloat)));
         if (name === "duration_seconds" && this.timeline.meta?.longAuto) {
           menu.appendChild(this._makeSettingRow(
-            "Max Segment Seconds",
+            t("maxSegmentSeconds"),
             createMetaNumberControl("maxSegmentSeconds", 15, 1, 3, 60, false, () => {
               this.updateLongAutoUI();
               this.render();
@@ -5780,7 +5966,7 @@ class TimelineEditor {
       }
       const resizeWidget = this.node.widgets?.find(w => w.name === "resize_method");
       if (resizeWidget) {
-        menu.appendChild(this._makeSettingRow("Resize", createSelectControl(resizeWidget, ["crop", "pad", "stretch"])));
+        menu.appendChild(this._makeSettingRow(t("resize"), createSelectControl(resizeWidget, ["crop", "pad", "stretch"])));
       }
 
       const dividerOutput = document.createElement("hr");
@@ -5838,7 +6024,7 @@ class TimelineEditor {
           if (this.displayModeWidget.callback) this.displayModeWidget.callback(origVal);
         }
       });
-      menu.appendChild(this._makeSettingRow("Use Global Prompt", cb));
+      menu.appendChild(this._makeSettingRow(t("useGlobalPrompt"), cb));
     }
 
     const customAudioWidget = this.node.widgets?.find(w => w.name === "use_custom_audio");
@@ -5851,22 +6037,22 @@ class TimelineEditor {
         fireCallback(customAudioWidget, cb.checked);
         this.node.setDirtyCanvas(true, true);
       });
-      menu.appendChild(this._makeSettingRow("Custom Audio", cb));
+      menu.appendChild(this._makeSettingRow(t("customAudio"), cb));
     }
 
     // --- Show/Hide on Node Toggle ---
     const toggleBtn = document.createElement("button");
     toggleBtn.className = "pr-settings-toggle-btn";
     const widgetsVisible = !!(this.node.widgets?.find(w => w.name === "display_mode" && !(w.options && w.options.hidden)));
-    toggleBtn.textContent = widgetsVisible ? "Hide Widgets on Node" : "Show Widgets on Node";
+    toggleBtn.textContent = widgetsVisible ? t("hideWidgets") : t("showWidgets");
     toggleBtn.addEventListener("click", () => {
       const nowVisible = !!(this.node.widgets?.find(w => w.name === "display_mode" && !(w.options && w.options.hidden)));
       if (nowVisible) {
         this.hideSettingsWidgets();
-        toggleBtn.textContent = "Show Widgets on Node";
+        toggleBtn.textContent = t("showWidgets");
       } else {
         this.showSettingsWidgets();
-        toggleBtn.textContent = "Hide Widgets on Node";
+        toggleBtn.textContent = t("hideWidgets");
       }
     });
     menu.appendChild(toggleBtn);
