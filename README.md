@@ -14,6 +14,26 @@ This branch includes Shezw's advanced LTX Director Pro workflows and local node 
 - Workflow files: [pro-workflows/](pro-workflows/)
 - Long-auto planner: [tools/long_auto_render.py](tools/long_auto_render.py)
 
+Core Pro features:
+
+### Meta Info
+
+Generate and apply a reliable global prefix for every render run. Import, Store, and Export content-only `*-ss.json` story scripts without saving a full Comfy workflow.
+
+![Meta Info panel with prefix and story script controls](pro-workflows/meta-info.png)
+
+### Long Timeline
+
+Edit long LTX Director timelines with keyframes, local prompts, camera cues, IC-Control, manual cuts, auto-cut guides, and custom audio together. The timeline is built for content planning first, not one-off node tweaking.
+
+![Long LTX Director Pro timeline](pro-workflows/infinite-timeline.png)
+
+### Segment Control
+
+Long-auto tracks completed segments and keeps tail-frame continuity between them. Each segment can Continue, Re-gen, or Reset without losing the rest of the run.
+
+![Long-auto segment progress controls](pro-workflows/segments-with-progress-control.png)
+
 Important dependency note: the Pro workflows use `LTXICLoRALoaderModelOnly`, which is provided by `Lightricks/ComfyUI-LTXVideo`, not by this repo. If ComfyUI reports this node as unknown, install or update:
 
 ```bash

@@ -76,6 +76,14 @@ def _story_scripts_dir() -> str:
     return path
 
 
+def _clean_story_script(story_script):
+    if not isinstance(story_script, dict):
+        return story_script
+    clean = dict(story_script)
+    clean.pop("ss_struct", None)
+    return clean
+
+
 def _resolve_export_dir(export_dir: str) -> str:
     export_dir = (export_dir or "").strip()
     if not export_dir:
@@ -980,7 +988,7 @@ async def shezw_story_script_load(request):
         if not os.path.isfile(path):
             raise FileNotFoundError(filename)
         with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
+            data = _clean_story_script(json.load(f))
         return web.json_response({"ok": True, "filename": filename, "story_script": data})
     except Exception as exc:
         return web.json_response({"ok": False, "error": str(exc)}, status=400)
@@ -996,6 +1004,7 @@ async def shezw_story_script_save(request):
             story_script = json.loads(story_script or "{}")
         if not isinstance(story_script, dict):
             raise ValueError("story_script must be an object")
+        story_script = _clean_story_script(story_script)
 
         targets = []
         store_path = os.path.join(_story_scripts_dir(), filename)

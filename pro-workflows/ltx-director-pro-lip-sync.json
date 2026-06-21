@@ -4608,7 +4608,6 @@
                 "workflow_id": "string",
                 "global_prefix": "string",
                 "created_at": "iso-datetime-string",
-                "ss_struct": "object",
                 "nodes": "array<node_entry>"
               }
             },
@@ -4658,7 +4657,12 @@
                 "guide_strength",
                 "custom_width",
                 "custom_height",
-                "resize_method"
+                "resize_method",
+                "display_mode",
+                "epsilon",
+                "divisible_by",
+                "img_compression",
+                "metadata"
               ]
             },
             {

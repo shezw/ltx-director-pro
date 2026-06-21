@@ -879,6 +879,7 @@ class TimelineEditor {
     this._isHovering = false;
     this._boxSelectStart = null;
     this._boxSelectRect = null;
+    this._settingsInputBindings = [];
 
     // Playback state
     this.currentFrame = 0;
@@ -1544,11 +1545,118 @@ class TimelineEditor {
 
   getLongAutoMemory() {
     if (!this.timeline.meta) this.timeline.meta = {};
+    const currentPrefix = this.getCurrentGlobalPrefix();
     const mem = this.timeline.meta.longAutoMemory;
     if (!mem || typeof mem !== "object" || !mem.segments || typeof mem.segments !== "object") {
-      this.timeline.meta.longAutoMemory = { schema: "shezw.long_auto.memory.v1", segments: {} };
+      this.timeline.meta.longAutoMemory = {
+        schema: "shezw.long_auto.memory.v1",
+        prefix: currentPrefix || "",
+        segments: {},
+        resetSegments: {},
+      };
+      return this.timeline.meta.longAutoMemory;
     }
+
+    const memoryPrefix = `${mem.prefix || ""}`.trim();
+    const inferredPrefix = this.inferLongAutoMemoryPrefix(mem);
+    const effectivePrefix = memoryPrefix || inferredPrefix;
+    if (currentPrefix && effectivePrefix && effectivePrefix !== currentPrefix) {
+      this.timeline.meta.longAutoMemory = {
+        schema: "shezw.long_auto.memory.v1",
+        prefix: currentPrefix,
+        segments: {},
+        resetSegments: {},
+        previousPrefix: effectivePrefix,
+        resetAt: new Date().toISOString(),
+      };
+      return this.timeline.meta.longAutoMemory;
+    }
+    mem.prefix = currentPrefix || effectivePrefix || "";
+    if (!mem.resetSegments || typeof mem.resetSegments !== "object") mem.resetSegments = {};
     return this.timeline.meta.longAutoMemory;
+  }
+
+  getCurrentGlobalPrefix() {
+    if (typeof window.shezwGetGlobalPrefix === "function") return `${window.shezwGetGlobalPrefix() || ""}`.trim();
+    return "";
+  }
+
+  inferLongAutoMemoryPrefix(memory) {
+    for (const record of Object.values(memory?.segments || {})) {
+      const subfolder = record?.video?.subfolder || record?.tailFrame?.subfolder || "";
+      const match = `${subfolder}`.replace(/\\/g, "/").match(/(?:^|\/)video\/([^/]+)/);
+      if (match?.[1]) return match[1];
+    }
+    return "";
+  }
+
+  applySettingWidgetValue(widget, value) {
+    if (!widget) return;
+    widget.value = value;
+    if (widget.callback) {
+      try {
+        widget.callback(value, app.canvas, this.node, null, null);
+      } catch (_) {
+        // Keep Store reliable even if a third-party widget callback throws.
+      }
+    }
+    if (app?.graph) app.graph.setDirtyCanvas(true, true);
+  }
+
+  flushSettingsInputs() {
+    for (const binding of this._settingsInputBindings || []) {
+      if (!binding?.input?.isConnected || !binding.widget) continue;
+      if (!binding.dirty && document.activeElement !== binding.input) continue;
+      let value = parseFloat(binding.input.value);
+      if (!Number.isFinite(value)) value = binding.widget.value;
+      value = clamp(value, binding.min, binding.max);
+      value = binding.isFloat ? Number(value.toFixed(4)) : Math.round(value);
+      binding.input.value = binding.isFloat ? value.toFixed(4) : String(value);
+      binding.dirty = false;
+      this.applySettingWidgetValue(binding.widget, value);
+    }
+  }
+
+  prepareStoryScriptStore() {
+    this.flushSettingsInputs();
+    if (this.timeline.meta?.longAuto || this.timeline.meta?.longAutoMemory) this.getLongAutoMemory();
+    this.commitChanges(true);
+  }
+
+  getStoryScriptWidgets() {
+    this.prepareStoryScriptStore();
+    const names = [
+      "global_prompt",
+      "duration_frames",
+      "duration_seconds",
+      "timeline_data",
+      "local_prompts",
+      "segment_lengths",
+      "epsilon",
+      "guide_strength",
+      "use_custom_audio",
+      "frame_rate",
+      "display_mode",
+      "custom_width",
+      "custom_height",
+      "resize_method",
+      "divisible_by",
+      "img_compression",
+      "metadata",
+    ];
+    const widgets = {};
+    for (const name of names) {
+      const widget = this.node.widgets?.find((w) => w.name === name);
+      if (widget) widgets[name] = widget.value;
+    }
+    if (widgets.duration_seconds === undefined) {
+      widgets.duration_seconds = parseFloat((this.getDurationFrames() / this.getFrameRate()).toFixed(3));
+    }
+    if (widgets.duration_frames === undefined) widgets.duration_frames = this.getDurationFrames();
+    if (widgets.frame_rate === undefined) widgets.frame_rate = this.getFrameRate();
+    if (widgets.timeline_data === undefined && this.timelineDataWidget) widgets.timeline_data = this.timelineDataWidget.value;
+    if (widgets.use_custom_audio === undefined) widgets.use_custom_audio = false;
+    return widgets;
   }
 
   segmentMemoryKey(seg) {
@@ -1561,8 +1669,10 @@ class TimelineEditor {
 
   setSegmentMemory(seg, record) {
     const memory = this.getLongAutoMemory();
+    const key = this.segmentMemoryKey(seg);
     memory.updatedAt = new Date().toISOString();
-    memory.segments[this.segmentMemoryKey(seg)] = {
+    delete memory.resetSegments?.[key];
+    memory.segments[key] = {
       index: seg.index,
       start: seg.start,
       end: seg.end,
@@ -1585,7 +1695,7 @@ class TimelineEditor {
 
   async reconcileLongAutoMemoryFromPrefix() {
     if (!this.timeline.meta?.longAuto) return false;
-    const prefix = typeof window.shezwGetGlobalPrefix === "function" ? window.shezwGetGlobalPrefix() : "";
+    const prefix = this.getCurrentGlobalPrefix();
     if (!prefix || this._lastPrefixAnalysis === prefix) return false;
     this._lastPrefixAnalysis = prefix;
 
@@ -1608,6 +1718,8 @@ class TimelineEditor {
       const seg = plan[index];
       const key = this.segmentMemoryKey(seg);
       const existing = memory.segments[key];
+      const reset = memory.resetSegments?.[key];
+      if (reset && (!reset.prefix || reset.prefix === prefix)) continue;
       if (existing?.tailFrame && existing?.video) continue;
 
       const tail = tails[index];
@@ -1655,7 +1767,13 @@ class TimelineEditor {
 
   resetSegmentMemory(seg) {
     const memory = this.getLongAutoMemory();
-    delete memory.segments[this.segmentMemoryKey(seg)];
+    const key = this.segmentMemoryKey(seg);
+    delete memory.segments[key];
+    if (!memory.resetSegments || typeof memory.resetSegments !== "object") memory.resetSegments = {};
+    memory.resetSegments[key] = {
+      prefix: this.getCurrentGlobalPrefix(),
+      resetAt: new Date().toISOString(),
+    };
     memory.updatedAt = new Date().toISOString();
     this.commitChanges();
     this.persistStoryScriptState("long_auto_memory_reset");
@@ -3466,6 +3584,7 @@ class TimelineEditor {
     this.ctx.fillRect(0, this.getTrackY("control"), width, 1);
     this.ctx.fillRect(0, this.getTrackY("audio"), width, 1);
 
+    this.drawAutoCutGuides(this.ctx, totalFrames, width);
     this.drawCutMarkers(this.ctx, totalFrames, width, activeCutSegId);
 
     // Draw gap "+" buttons
@@ -3791,6 +3910,41 @@ class TimelineEditor {
       }
       ctx.restore();
     }
+  }
+
+  getAutoCutGuideFrames() {
+    if (!this.timeline.meta?.longAuto) return [];
+    const plan = this.getLongAutoPlan();
+    const frames = new Map();
+    for (const seg of plan) {
+      if (seg.start <= 0) continue;
+      const reasons = seg.reasons || [];
+      if (!reasons.length || reasons.includes("manual_cut") || reasons.includes("timeline_start")) continue;
+      frames.set(seg.start, reasons);
+    }
+    return [...frames.entries()].map(([frame, reasons]) => ({ frame, reasons }));
+  }
+
+  drawAutoCutGuides(ctx, totalFrames, width) {
+    const guides = this.getAutoCutGuideFrames();
+    if (!guides.length || totalFrames <= 0) return;
+    const yTop = RULER_HEIGHT;
+    const yBottom = this.canvasHeight;
+    ctx.save();
+    ctx.strokeStyle = "rgba(135, 205, 255, 0.78)";
+    ctx.lineWidth = 1.25;
+    ctx.setLineDash([3, 5]);
+    for (const guide of guides) {
+      const frame = clamp(Math.round(guide.frame || 0), 0, totalFrames);
+      if (frame <= 0 || frame >= totalFrames) continue;
+      const x = (frame / totalFrames) * width;
+      ctx.beginPath();
+      ctx.moveTo(x, yTop);
+      ctx.lineTo(x, yBottom);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    ctx.restore();
   }
 
 
@@ -5357,6 +5511,7 @@ class TimelineEditor {
     this.dismissSettingsMenu();
     this._settingsAnchorEl = anchorEl;
     this._segmentsMenuOpen = false;
+    this._settingsInputBindings = [];
     const menu = document.createElement("div");
     menu.className = "pr-settings-menu";
 
@@ -5381,13 +5536,7 @@ class TimelineEditor {
     menu.appendChild(titleContainer);
 
     // Helper: fire a widget's callback safely
-    const fireCallback = (w, val) => {
-      w.value = val;
-      if (w.callback) {
-        try { w.callback(val, app.canvas, this.node, null, null); } catch (e) { }
-      }
-      if (window.app && window.app.graph) window.app.graph.setDirtyCanvas(true, true);
-    };
+    const fireCallback = (w, val) => this.applySettingWidgetValue(w, val);
 
     // --- Display Mode ---
     const dmWidget = this.node.widgets?.find(w => w.name === "display_mode");
@@ -5478,6 +5627,8 @@ class TimelineEditor {
       inp.step = step.toString();
       inp.min = min.toString();
       inp.max = max.toString();
+      const binding = { widget: w, input: inp, min, max, isFloat, dirty: false };
+      this._settingsInputBindings.push(binding);
 
       const incBtn = document.createElement("button");
       incBtn.className = "pr-number-btn";
@@ -5503,7 +5654,11 @@ class TimelineEditor {
         if (val < min) val = min;
         if (val > max) val = max;
         inp.value = isFloat ? val.toFixed(4) : Math.round(val);
+        binding.dirty = false;
         fireCallback(w, parseFloat(inp.value));
+      });
+      inp.addEventListener("input", () => {
+        binding.dirty = true;
       });
 
       // Dragging logic
@@ -5722,9 +5877,11 @@ class TimelineEditor {
   }
 
   dismissSettingsMenu() {
+    this.flushSettingsInputs();
     if (this._settingsMenu) { this._settingsMenu.remove(); this._settingsMenu = null; }
     if (this._settingsDismisser) { document.removeEventListener("mousedown", this._settingsDismisser); this._settingsDismisser = null; }
     this._segmentsMenuOpen = false;
+    this._settingsInputBindings = [];
   }
 
 
