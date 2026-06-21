@@ -126,6 +126,12 @@ function mergeStructWithKnownWidgets(struct) {
   return next;
 }
 
+function stripStoryScriptStruct(story) {
+  if (!story || typeof story !== "object") return story;
+  const { ss_struct, ...clean } = story;
+  return clean;
+}
+
 function getAllowedWidgets(struct, node) {
   const entries = struct.fields.filter((field) => {
     if (field.node_id !== undefined && String(field.node_id) !== String(node.id)) return false;
@@ -257,8 +263,7 @@ function storyScriptFromLegacyWorkflow(data, storyNode) {
 
 function normalizeImportedStoryScript(data, storyNode) {
   if (data?.schema === "ltx-director-pro.story-script.v1" && Array.isArray(data.nodes)) {
-    const { ss_struct, ...story } = data;
-    return story;
+    return stripStoryScriptStruct(data);
   }
   return storyScriptFromLegacyWorkflow(data, storyNode);
 }
@@ -332,7 +337,7 @@ function applyStoryScript(story, storyNode) {
       || nodeList.find((node) => node.type === "ShezwGlobalPrefix");
     setWidgetValue(prefixNode, "global_prefix", story.global_prefix);
   }
-  const { ss_struct, ...storyForNode } = story || {};
+  const storyForNode = stripStoryScriptStruct(story || {});
   setNodeProp(storyNode, "story_script", storyForNode);
   setWidgetValue(storyNode, "story_script", JSON.stringify(storyForNode, null, 2));
   if (typeof window.shezwApplyGlobalPrefixToGraph === "function") window.shezwApplyGlobalPrefixToGraph();
@@ -364,7 +369,7 @@ function downloadJson(filename, data) {
 }
 
 async function saveStoryScript(storyNode, exportDir = "") {
-  const story = collectStoryScript(storyNode);
+  const story = stripStoryScriptStruct(collectStoryScript(storyNode));
   const filename = storyFilename(storyNode, story);
   setNodeProp(storyNode, "story_script", story);
   setWidgetValue(storyNode, "story_script", JSON.stringify(story, null, 2));

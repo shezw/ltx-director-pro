@@ -879,6 +879,7 @@ class TimelineEditor {
     this._isHovering = false;
     this._boxSelectStart = null;
     this._boxSelectRect = null;
+    this._settingsInputBindings = [];
 
     // Playback state
     this.currentFrame = 0;
@@ -1589,9 +1590,36 @@ class TimelineEditor {
     return "";
   }
 
+  applySettingWidgetValue(widget, value) {
+    if (!widget) return;
+    widget.value = value;
+    if (widget.callback) {
+      try {
+        widget.callback(value, app.canvas, this.node, null, null);
+      } catch (_) {
+        // Keep Store reliable even if a third-party widget callback throws.
+      }
+    }
+    if (app?.graph) app.graph.setDirtyCanvas(true, true);
+  }
+
+  flushSettingsInputs() {
+    for (const binding of this._settingsInputBindings || []) {
+      if (!binding?.input?.isConnected || !binding.widget) continue;
+      if (!binding.dirty && document.activeElement !== binding.input) continue;
+      let value = parseFloat(binding.input.value);
+      if (!Number.isFinite(value)) value = binding.widget.value;
+      value = clamp(value, binding.min, binding.max);
+      value = binding.isFloat ? Number(value.toFixed(4)) : Math.round(value);
+      binding.input.value = binding.isFloat ? value.toFixed(4) : String(value);
+      binding.dirty = false;
+      this.applySettingWidgetValue(binding.widget, value);
+    }
+  }
+
   prepareStoryScriptStore() {
-    if (!this.timeline.meta?.longAuto && !this.timeline.meta?.longAutoMemory) return;
-    this.getLongAutoMemory();
+    this.flushSettingsInputs();
+    if (this.timeline.meta?.longAuto || this.timeline.meta?.longAutoMemory) this.getLongAutoMemory();
     this.commitChanges(true);
   }
 
@@ -5447,6 +5475,7 @@ class TimelineEditor {
     this.dismissSettingsMenu();
     this._settingsAnchorEl = anchorEl;
     this._segmentsMenuOpen = false;
+    this._settingsInputBindings = [];
     const menu = document.createElement("div");
     menu.className = "pr-settings-menu";
 
@@ -5471,13 +5500,7 @@ class TimelineEditor {
     menu.appendChild(titleContainer);
 
     // Helper: fire a widget's callback safely
-    const fireCallback = (w, val) => {
-      w.value = val;
-      if (w.callback) {
-        try { w.callback(val, app.canvas, this.node, null, null); } catch (e) { }
-      }
-      if (window.app && window.app.graph) window.app.graph.setDirtyCanvas(true, true);
-    };
+    const fireCallback = (w, val) => this.applySettingWidgetValue(w, val);
 
     // --- Display Mode ---
     const dmWidget = this.node.widgets?.find(w => w.name === "display_mode");
@@ -5568,6 +5591,8 @@ class TimelineEditor {
       inp.step = step.toString();
       inp.min = min.toString();
       inp.max = max.toString();
+      const binding = { widget: w, input: inp, min, max, isFloat, dirty: false };
+      this._settingsInputBindings.push(binding);
 
       const incBtn = document.createElement("button");
       incBtn.className = "pr-number-btn";
@@ -5593,7 +5618,11 @@ class TimelineEditor {
         if (val < min) val = min;
         if (val > max) val = max;
         inp.value = isFloat ? val.toFixed(4) : Math.round(val);
+        binding.dirty = false;
         fireCallback(w, parseFloat(inp.value));
+      });
+      inp.addEventListener("input", () => {
+        binding.dirty = true;
       });
 
       // Dragging logic
@@ -5812,9 +5841,11 @@ class TimelineEditor {
   }
 
   dismissSettingsMenu() {
+    this.flushSettingsInputs();
     if (this._settingsMenu) { this._settingsMenu.remove(); this._settingsMenu = null; }
     if (this._settingsDismisser) { document.removeEventListener("mousedown", this._settingsDismisser); this._settingsDismisser = null; }
     this._segmentsMenuOpen = false;
+    this._settingsInputBindings = [];
   }
 
 
