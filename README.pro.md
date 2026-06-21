@@ -36,6 +36,8 @@ pro-workflows/ltx-director-pro.json
 - Long Auto 每段完成或重置分段记忆后，会自动把当前 story script 写回默认文件 `${GLOBAL_PREFIX}-ltx-pro-ss.json`；重新导入脚本后也会按安全 prefix 扫描 `output/video/<GLOBAL_PREFIX>/`，用已有 segment video / tail-frame 文件补全分段完成状态。
 - `ss_struct` 只保存在 workflow JSON 的 Meta Info 节点属性里，用来描述当前 workflow 允许导入/导出的内容字段；`*-ss.json` 不写入 `ss_struct`，只保存 story script 内容。`workflow_id`、默认文件名、脚本缓存和 export 目录也保存在 workflow 节点属性里，不在 UI 上显示。
 
+![Meta Info panel for global prefix and story script actions](pro-workflows/meta-info.png)
+
 ## Long Auto
 
 推荐打开：
@@ -45,6 +47,8 @@ pro-workflows/ltx-director-pro.json
 ```
 
 它是长视频分段渲染模板，配套外层工具：
+
+![Long Auto infinite timeline with keyframes, prompts, camera, cuts, IC-Control, and audio](pro-workflows/infinite-timeline.png)
 
 ```bash
 python3 tools/long_auto_render.py pro-workflows/ltx-director-pro.json --plan-only
@@ -95,6 +99,8 @@ timeline_data.cutSegments
 每个 segment 完成后，前端会立即更新 `timeline_data.meta.longAutoMemory` 并自动 Store 当前 story script；如果脚本里缺少分段记忆，导入后会根据当前 `GLOBAL_PREFIX` 扫描 `output/video/<GLOBAL_PREFIX>/` 下已有的 segment video 和 tail-frame 文件，按时间顺序恢复已完成状态。分段记忆现在绑定到当前 prefix；更换 prefix 会自动切换为空的分段记忆。对单段执行 `Reset` 会记录 reset 标记，后续 prefix 扫描不会把同一 prefix 下已重置的文件重新恢复成完成状态，直到该段重新生成成功。
 
 如果只想测试某一个 segment，可以在时间线设置按钮里切换 `Render Segment`，或者关闭 `queueAllByDefault` 后只渲染当前 active segment。
+
+![Long-Auto segment status panel with Continue, Re-gen, and Reset controls](pro-workflows/segments-with-progress-control.png)
 
 ## Director Pro 合并版
 
