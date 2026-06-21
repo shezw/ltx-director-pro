@@ -16,26 +16,23 @@ This branch includes Shezw's advanced LTX Director Pro workflows and local node 
 
 Core Pro features:
 
-- **Meta Info run ID and story scripts:** generate/apply a reliable global prefix, then import/store/export content-only `*-ss.json` scripts without saving a full Comfy workflow.
-- **Long Director timeline:** manage keyframes, local prompts, camera cues, IC-Control, manual cuts, auto-cut guides, and custom audio on one timeline.
-- **Segment progress control:** long-auto renders track completed segments, preserve tail-frame continuity, and expose per-segment Continue, Re-gen, and Reset controls.
+### Meta Info
 
-<table>
-  <tr>
-    <td width="33%" align="center">
-      <p>Meta Info</p>
-      <img src="pro-workflows/meta-info.png" width="100%" alt="Meta Info panel with prefix and story script controls" />
-    </td>
-    <td width="33%" align="center">
-      <p>Long Timeline</p>
-      <img src="pro-workflows/infinite-timeline.png" width="100%" alt="Long LTX Director Pro timeline" />
-    </td>
-    <td width="33%" align="center">
-      <p>Segment Control</p>
-      <img src="pro-workflows/segments-with-progress-control.png" width="100%" alt="Long-auto segment progress controls" />
-    </td>
-  </tr>
-</table>
+Generate and apply a reliable global prefix for every render run. Import, Store, and Export content-only `*-ss.json` story scripts without saving a full Comfy workflow.
+
+![Meta Info panel with prefix and story script controls](pro-workflows/meta-info.png)
+
+### Long Timeline
+
+Edit long LTX Director timelines with keyframes, local prompts, camera cues, IC-Control, manual cuts, auto-cut guides, and custom audio together. The timeline is built for content planning first, not one-off node tweaking.
+
+![Long LTX Director Pro timeline](pro-workflows/infinite-timeline.png)
+
+### Segment Control
+
+Long-auto tracks completed segments and keeps tail-frame continuity between them. Each segment can Continue, Re-gen, or Reset without losing the rest of the run.
+
+![Long-auto segment progress controls](pro-workflows/segments-with-progress-control.png)
 
 Important dependency note: the Pro workflows use `LTXICLoRALoaderModelOnly`, which is provided by `Lightricks/ComfyUI-LTXVideo`, not by this repo. If ComfyUI reports this node as unknown, install or update:
 
