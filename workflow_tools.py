@@ -151,6 +151,7 @@ class ShezwMetaInfo:
             "ss_struct": DEFAULT_SS_STRUCT,
             "story_script": {},
             "export_dir": "",
+            "ui_language": "en",
         }
 
     def execute(self, global_prefix=""):

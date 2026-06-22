@@ -150,7 +150,8 @@
         },
         "story_script": {},
         "export_dir": "",
-        "Node name for S&R": "ShezwMetaInfo"
+        "Node name for S&R": "ShezwMetaInfo",
+        "ui_language": "en"
       },
       "widgets_values": [
         ""
