@@ -26,7 +26,7 @@ pro-workflows/ltx-director-pro.json
 | `pro-workflows/ltx-director-pro.json` | 主入口。Director Pro + Long Auto 合并版，双控制视频、参考图、关键帧、脚本导入导出、Meta Info、分段 Continue / Re-gen。 | 推荐 |
 | `pro-workflows/ltx-director-pro-lip-sync.json` | 对口型：图 + 音频生成同长度视频，带 Meta Info 和 story script。 | 可用 |
 | `pro-workflows/ltx-director-pro-upscale.json` | 视频高清放大；支持分段 upscale 后自动拼接，带 Meta Info 和 story script。 | 可用 |
-| `pro-workflows/ltx-director-pro-image.json` | 单图 SUPIR 修复；内置四档真人/影视提示词模板，原图色彩回正、对比预览和 Prefix 输出。 | 实验 |
+| `pro-workflows/ltx-director-pro-image.json` | 单图 SUPIR 修复 + epiCPhotoGasm 真实摄影质感增强；内置四档模板、自然编辑影调、细颗粒、对比预览和 Prefix 输出。 | 实验 |
 旧 `long-auto.json` / `pro-console.json` 已合并为 `ltx-director-pro.json`；旧 `lip-sync.json` / `upscale.json` 已改名为带 `ltx-director-pro-` 前缀的入口；旧单路 `camera.json` 已删除，运镜/动作控制统一收敛到 `ltx-director-pro.json`。
 
 所有新版工作流都包含一个 `Meta Info` 面板：
@@ -49,16 +49,21 @@ pro-workflows/ltx-director-pro.json
 pro-workflows/ltx-director-pro-image.json
 ```
 
-这是独立的单图 SUPIR 修复工作流，不包含视频、音频、LTX 时间线或 Qwen 自动描述。`Shezw Image Prompt Templates` 下拉节点内置四档正向提示词：`Hasselblad Portrait / 哈苏人像`、`Modern MV / 现代 MV`、`Film Look Test / 胶片定妆照` 和默认的 `Natural Cinema Master / 自然电影母版`。节点同时输出通用负向提示词，正负两路会直接进入 SDXL 条件编码。
+这是独立的单图真人影像工作流，不包含视频、音频、LTX 时间线或 Qwen 自动描述。`Shezw Image Prompt Templates` 下拉节点内置四档提示词：`Hasselblad Portrait / 哈苏人像`、`Modern MV / 现代 MV`、`Film Look Test / 胶片定妆照` 和默认的 `Natural Cinema Master / 自然电影母版`。提示词保持简洁，并同时进入 SUPIR 的 SDXL CLIP 和 epiCPhotoGasm 的 SD 1.5 CLIP。
 
-默认链路是 `Load Image -> Resize -> SUPIR -> MKL-LAB Color Transfer -> Before/After -> Save Image`，最终像素数默认为 `2.25 MP`，SUPIR 参数沿用 ComfyUI 官方模板的保真基线。Meta Info 会把输出路径更新为 `image/<GLOBAL_PREFIX>/ltx-director-pro-image-final`，story script 记录输入图、模板、目标尺寸、SUPIR 强度和采样参数。
+默认链路是 `Load Image -> SUPIR -> 20% MKL-LAB 原色保护 -> epiCPhotoGasm 低重绘 -> Natural Editorial Tone -> 低强度 CAS -> Fine Film Grain -> Before/After -> Save Image`。最终像素数默认为 `2.25 MP`；epiCPhotoGasm 使用独立 checkpoint、CLIP 和 VAE，以 `20 steps / CFG 5 / denoise 0.18` 增强真实皮肤、毛发和织物纹理，不与 SUPIR 的 SDXL 链路混接。
+
+默认影调以自然编辑人像为基线：保留皮肤纹理与细纹，柔化高光过渡，控制反差和锐化，并用低饱和 Gaussian 颗粒完成可重复的摄影质感。Meta Info 会把输出路径更新为 `image/<GLOBAL_PREFIX>/ltx-director-pro-image-final`；story script 记录输入图、模板、目标尺寸、SUPIR、epiCPhotoGasm、影调、锐化和颗粒参数。
 
 需要 ComfyUI `0.20.1+` 的原生 SUPIR 支持，以及：
 
 ```text
 models/checkpoints/juggernautXL_v9Rdphoto2Lightning.safetensors
 models/model_patches/SUPIR-v0Q_fp16.safetensors
+models/checkpoints/epicphotogasm_ultimateFidelity.safetensors
 ```
+
+epiCPhotoGasm 使用 [Civitai `Ultimate Fidelity` 版本](https://civitai.com/models/132632?modelVersionId=429454)，工作流内置官方下载元数据，但不分发模型文件。Civitai 当前权限要求署名、允许生成图商业使用、不允许模型衍生；使用时仍应以模型页面的最新许可为准。
 
 SUPIR 原项目声明为非商业使用；未另行获得作者许可前，这个工作流不应用于商业交付。
 

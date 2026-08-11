@@ -29,6 +29,9 @@ class ImagePromptTemplateTests(unittest.TestCase):
             positive, negative, selected = node.select(name)
             self.assertEqual(positive, prompt)
             self.assertIn("preserve the exact identity", positive)
+            self.assertNotIn("32k", positive.lower())
+            self.assertNotIn("hyper sharp", positive.lower())
+            self.assertLess(len(positive.split()), 55)
             self.assertEqual(negative, NEGATIVE_PROMPT)
             self.assertEqual(selected, name)
 
