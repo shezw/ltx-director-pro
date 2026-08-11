@@ -8,6 +8,7 @@
 - 镜头轨道控制
 - IC-LoRA 控制视频
 - 视频放大
+- SUPIR 单图影像修复与质感增强
 - SeedDance 2.0 API 导演台实验工作流
 
 当前主力建议使用：
@@ -25,12 +26,13 @@ pro-workflows/ltx-director-pro.json
 | `pro-workflows/ltx-director-pro.json` | 主入口。Director Pro + Long Auto 合并版，双控制视频、参考图、关键帧、脚本导入导出、Meta Info、分段 Continue / Re-gen。 | 推荐 |
 | `pro-workflows/ltx-director-pro-lip-sync.json` | 对口型：图 + 音频生成同长度视频，带 Meta Info 和 story script。 | 可用 |
 | `pro-workflows/ltx-director-pro-upscale.json` | 视频高清放大；支持分段 upscale 后自动拼接，带 Meta Info 和 story script。 | 可用 |
+| `pro-workflows/ltx-director-pro-image.json` | 单图 SUPIR 修复；内置四档真人/影视提示词模板，原图色彩回正、对比预览和 Prefix 输出。 | 实验 |
 旧 `long-auto.json` / `pro-console.json` 已合并为 `ltx-director-pro.json`；旧 `lip-sync.json` / `upscale.json` 已改名为带 `ltx-director-pro-` 前缀的入口；旧单路 `camera.json` 已删除，运镜/动作控制统一收敛到 `ltx-director-pro.json`。
 
 所有新版工作流都包含一个 `Meta Info` 面板：
 
 - 只显示全局 prefix 输入框和 `Gen` / `Apply` / `Import` / `Store` / `Export` 按钮。
-- `Gen` 会生成数字 ID，格式为 `YYYYMMDDHHMM` + 4 位随机数；`Apply` 会把当前图里 `filename_prefix`、`segment_prefix`、`output_prefix` 统一改到 `video/<ID>/...`，普通 Queue 和 `Queue Chunks` 都会自动应用。
+- `Gen` 会生成数字 ID，格式为 `YYYYMMDDHHMM` + 4 位随机数；`Apply` 会把当前图里 `filename_prefix`、`segment_prefix`、`output_prefix` 统一改到 `video/<ID>/...` 或 `image/<ID>/...`，普通 Queue 和 `Queue Chunks` 都会自动应用。
 - `Import` / `Store` / `Export` 处理 `*-ss.json`。它只保存内容相关字段，例如 Director 时间线、关键帧、参考图、控制视频、音频、裁切、时长、分辨率等，不保存整个 Comfy workflow。`Import` 也能读取旧版完整 workflow JSON，例如旧 `long-auto.json`，并自动抽取/迁移这些内容字段。
 - Store 会强制保存 LTXDirector 的内容设置字段，包括 `duration_seconds`、`frame_rate`、`custom_width`、`custom_height`、`resize_method`、`use_custom_audio`、`divisible_by`、`img_compression`、`timeline_data` 等；导入旧脚本时即使文件里带有旧版 `ss_struct`，也只会使用当前 workflow 内置结构，不会让脚本覆盖 workflow 结构。
 - Long Auto 每段完成或重置分段记忆后，会自动把当前 story script 写回默认文件 `${GLOBAL_PREFIX}-ltx-pro-ss.json`；重新导入脚本后也会按安全 prefix 扫描 `output/video/<GLOBAL_PREFIX>/`，用已有 segment video / tail-frame 文件补全分段完成状态。
@@ -38,6 +40,27 @@ pro-workflows/ltx-director-pro.json
 - Meta Info 还保存 `ui_language`，当前支持 English / 中文。选择语言并确认后，会刷新 Meta Info 和 Director 时间线的基础 UI 文案；该字段属于 workflow 设置，不写入 story script。
 
 ![Meta Info panel for global prefix and story script actions](pro-workflows/meta-info.png)
+
+## 单图影像修复
+
+快速实验入口：
+
+```text
+pro-workflows/ltx-director-pro-image.json
+```
+
+这是独立的单图 SUPIR 修复工作流，不包含视频、音频、LTX 时间线或 Qwen 自动描述。`Shezw Image Prompt Templates` 下拉节点内置四档正向提示词：`Hasselblad Portrait / 哈苏人像`、`Modern MV / 现代 MV`、`Film Look Test / 胶片定妆照` 和默认的 `Natural Cinema Master / 自然电影母版`。节点同时输出通用负向提示词，正负两路会直接进入 SDXL 条件编码。
+
+默认链路是 `Load Image -> Resize -> SUPIR -> MKL-LAB Color Transfer -> Before/After -> Save Image`，最终像素数默认为 `2.25 MP`，SUPIR 参数沿用 ComfyUI 官方模板的保真基线。Meta Info 会把输出路径更新为 `image/<GLOBAL_PREFIX>/ltx-director-pro-image-final`，story script 记录输入图、模板、目标尺寸、SUPIR 强度和采样参数。
+
+需要 ComfyUI `0.20.1+` 的原生 SUPIR 支持，以及：
+
+```text
+models/checkpoints/juggernautXL_v9Rdphoto2Lightning.safetensors
+models/model_patches/SUPIR-v0Q_fp16.safetensors
+```
+
+SUPIR 原项目声明为非商业使用；未另行获得作者许可前，这个工作流不应用于商业交付。
 
 ## Long Auto
 

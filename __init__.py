@@ -8,6 +8,7 @@ from .ltx_director import LTXDirector
 from .ltx_director_guide import LTXDirectorGuide
 from .shezw_iclora_params import ShezwDirectorICLoRAParams, ShezwDirectorICLoRAGuide
 from .upscale_chunker import ShezwUpscaleChunker
+from .image_prompt_templates import ShezwImagePromptTemplate
 from .workflow_tools import ShezwGlobalPrefix, ShezwMetaInfo, ShezwStoryScript
 from comfy_api.latest import ComfyExtension, io
 from typing_extensions import override
@@ -1090,6 +1091,7 @@ NODE_CLASS_MAPPINGS = {
     "ShezwDirectorICLoRAParams": ShezwDirectorICLoRAParams,
     "ShezwDirectorICLoRAGuide": ShezwDirectorICLoRAGuide,
     "ShezwUpscaleChunker": ShezwUpscaleChunker,
+    "ShezwImagePromptTemplate": ShezwImagePromptTemplate,
     "ShezwMetaInfo": ShezwMetaInfo,
     "ShezwGlobalPrefix": ShezwGlobalPrefix,
     "ShezwStoryScript": ShezwStoryScript,
@@ -1107,6 +1109,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ShezwDirectorICLoRAParams": "Shezw Director IC-LoRA Params",
     "ShezwDirectorICLoRAGuide": "Shezw Director IC-LoRA Guide",
     "ShezwUpscaleChunker": "Shezw Upscale Chunker",
+    "ShezwImagePromptTemplate": "Shezw Image Prompt Templates",
     "ShezwMetaInfo": "Shezw Meta Info",
     "ShezwGlobalPrefix": "Shezw Global Prefix",
     "ShezwStoryScript": "Shezw Story Script",

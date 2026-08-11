@@ -51,7 +51,7 @@ function prefixPath(value, globalPrefix) {
   const parts = clean.split("/").filter(Boolean);
   const idLike = (text) => /^\d{10,20}$/.test(text || "");
 
-  if (parts[0] === "video") {
+  if (parts[0] === "video" || parts[0] === "image") {
     if (idLike(parts[1]) || parts.length >= 3) parts.splice(1, 1, globalPrefix);
     else parts.splice(1, 0, globalPrefix);
     return parts.join("/");
