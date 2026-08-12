@@ -1,0 +1,3049 @@
+{
+  "id": "4b3b7b05-e3e2-4159-95d0-293895c99b78",
+  "revision": 0,
+  "last_node_id": 122,
+  "last_link_id": 48,
+  "nodes": [
+    {
+      "id": 100,
+      "type": "ShezwMetaInfo",
+      "pos": [
+        -720,
+        -520
+      ],
+      "size": [
+        520,
+        190
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "Global Prefix",
+          "name": "global_prefix",
+          "type": "STRING",
+          "widget": {
+            "name": "global_prefix"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "Global Prefix",
+          "name": "global_prefix",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "title": "Meta Info",
+      "properties": {
+        "Node name for S&R": "ShezwMetaInfo",
+        "workflow_id": "ltx-director-pro-mv-upscale",
+        "script_name": "ltx-director-pro-mv-upscale-ss.json",
+        "ss_struct": {
+          "schema": "ltx-director-pro.ss-struct.v1",
+          "structures": {
+            "story_script": {
+              "type": "object",
+              "properties": {
+                "schema": "string",
+                "workflow_id": "string",
+                "global_prefix": "string",
+                "created_at": "iso-datetime-string",
+                "nodes": "array<node_entry>"
+              }
+            },
+            "node_entry": {
+              "type": "object",
+              "properties": {
+                "id": "string",
+                "type": "string",
+                "title": "string",
+                "widgets": "object<string, value>"
+              }
+            }
+          },
+          "fields": [
+            {
+              "node_type": "ShezwMetaInfo",
+              "widgets": [
+                "global_prefix"
+              ]
+            },
+            {
+              "node_type": "ShezwImagePromptTemplate",
+              "widgets": [
+                "template"
+              ]
+            },
+            {
+              "node_id": "116",
+              "node_type": "VHS_LoadVideo",
+              "widgets": [
+                "video",
+                "force_rate",
+                "custom_width",
+                "custom_height",
+                "select_every_nth"
+              ]
+            },
+            {
+              "node_id": "94",
+              "node_type": "ResizeImageMaskNode",
+              "widgets": [
+                "resize_type",
+                "resize_type.multiplier",
+                "scale_method"
+              ]
+            },
+            {
+              "node_id": "62",
+              "node_type": "SUPIRApply",
+              "widgets": [
+                "strength_start",
+                "strength_end",
+                "restore_cfg",
+                "restore_cfg_s_tmin"
+              ]
+            },
+            {
+              "node_id": "76",
+              "node_type": "KSamplerSelect",
+              "widgets": [
+                "sampler_name"
+              ]
+            },
+            {
+              "node_id": "29",
+              "node_type": "BasicScheduler",
+              "widgets": [
+                "scheduler",
+                "steps",
+                "denoise"
+              ]
+            },
+            {
+              "node_id": "20",
+              "node_type": "SamplerCustom",
+              "widgets": [
+                "add_noise",
+                "noise_seed",
+                "cfg"
+              ]
+            },
+            {
+              "node_id": "39",
+              "node_type": "ColorTransfer",
+              "widgets": [
+                "method",
+                "source_stats",
+                "strength"
+              ]
+            },
+            {
+              "node_id": "111",
+              "node_type": "KSampler",
+              "widgets": [
+                "seed",
+                "steps",
+                "cfg",
+                "sampler_name",
+                "scheduler",
+                "denoise"
+              ]
+            },
+            {
+              "node_id": "113",
+              "node_type": "LayerColor: BrightnessContrastV2",
+              "widgets": [
+                "brightness",
+                "contrast",
+                "saturation"
+              ]
+            },
+            {
+              "node_id": "114",
+              "node_type": "ImageCASharpening+",
+              "widgets": [
+                "amount"
+              ]
+            },
+            {
+              "node_id": "115",
+              "node_type": "FilmGrain",
+              "widgets": [
+                "switch",
+                "grain_strength",
+                "saturation_blend",
+                "grain_distribution"
+              ]
+            },
+            {
+              "node_id": "121",
+              "node_type": "ShezwUpscaleChunker",
+              "widgets": [
+                "chunk_seconds",
+                "segment_prefix",
+                "output_prefix",
+                "cleanup_wait_seconds",
+                "start_segment_index"
+              ]
+            }
+          ]
+        },
+        "story_script": {},
+        "export_dir": "",
+        "ui_language": "en"
+      },
+      "widgets_values": [
+        ""
+      ]
+    },
+    {
+      "id": 102,
+      "type": "ShezwImagePromptTemplate",
+      "pos": [
+        -720,
+        -270
+      ],
+      "size": [
+        430,
+        154
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "template",
+          "name": "template",
+          "type": "COMBO",
+          "widget": {
+            "name": "template"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "positive_prompt",
+          "name": "positive_prompt",
+          "type": "STRING",
+          "links": [
+            10,
+            11,
+            29
+          ]
+        },
+        {
+          "localized_name": "negative_prompt",
+          "name": "negative_prompt",
+          "type": "STRING",
+          "links": [
+            12,
+            13,
+            31
+          ]
+        },
+        {
+          "localized_name": "template_name",
+          "name": "template_name",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "title": "Image Prompt Templates / 影像提示词模板",
+      "properties": {
+        "Node name for S&R": "ShezwImagePromptTemplate"
+      },
+      "widgets_values": [
+        "Natural Cinema Master / 自然电影母版"
+      ]
+    },
+    {
+      "id": 116,
+      "type": "VHS_LoadVideo",
+      "pos": [
+        -720,
+        -80
+      ],
+      "size": [
+        430,
+        560
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "meta_batch",
+          "shape": 7,
+          "type": "VHS_BatchManager",
+          "link": null
+        },
+        {
+          "name": "vae",
+          "shape": 7,
+          "type": "VAE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            1
+          ]
+        },
+        {
+          "name": "frame_count",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "links": [
+            45
+          ]
+        },
+        {
+          "name": "video_info",
+          "type": "VHS_VIDEOINFO",
+          "links": [
+            46
+          ]
+        }
+      ],
+      "title": "MV SOURCE VIDEO / MV 源视频",
+      "properties": {
+        "cnr_id": "comfyui-videohelpersuite",
+        "ver": "1.7.9",
+        "Node name for S&R": "VHS_LoadVideo"
+      },
+      "widgets_values": {
+        "video": "input_mv.mp4",
+        "force_rate": 0,
+        "custom_width": 0,
+        "custom_height": 0,
+        "frame_load_cap": 0,
+        "skip_first_frames": 0,
+        "select_every_nth": 1,
+      "format": "None",
+        "videopreview": {
+          "hidden": false,
+          "paused": false,
+          "params": {
+            "frame_load_cap": 0,
+            "skip_first_frames": 0,
+            "force_rate": 0,
+            "filename": "input_mv.mp4",
+            "type": "input",
+            "format": "video/mp4",
+            "select_every_nth": 1
+          }
+        }
+      }
+    },
+    {
+      "id": 117,
+      "type": "VHS_VideoInfoLoaded",
+      "pos": [
+        -250,
+        420
+      ],
+      "size": [
+        260,
+        110
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "video_info",
+          "type": "VHS_VIDEOINFO",
+          "link": 46
+        }
+      ],
+      "outputs": [
+        {
+          "name": "fps",
+          "type": "FLOAT",
+          "links": [
+            47
+          ]
+        },
+        {
+          "name": "frame_count",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "duration",
+          "type": "FLOAT",
+          "links": null
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": null
+        }
+      ],
+      "title": "ORIGINAL FPS / 原始帧率",
+      "properties": {
+        "cnr_id": "comfyui-videohelpersuite",
+        "ver": "1.7.9",
+        "Node name for S&R": "VHS_VideoInfoLoaded"
+      },
+      "widgets_values": {}
+    },
+    {
+      "id": 121,
+      "type": "ShezwUpscaleChunker",
+      "pos": [
+        -720,
+        560
+      ],
+      "size": [
+        520,
+        280
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "ShezwUpscaleChunker"
+      },
+      "widgets_values": [
+        0.25,
+        "video/ltx-director-pro-mv-upscale-segment",
+        "video/ltx-director-pro-mv-upscale-merged",
+        5,
+        0
+      ],
+      "title": "MV UPSCALE CONTROLLER / MV 分段放大"
+    },
+    {
+      "id": 122,
+      "type": "MarkdownNote",
+      "pos": [
+        -720,
+        900
+      ],
+      "size": [
+        620,
+        480
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "MV Upscale / MV 放大说明",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.16.3",
+        "Node name for S&R": "MarkdownNote"
+      },
+      "widgets_values": [
+        "# MV 2X Photoreal Upscale\n\nPipeline: original video -> 2x Lanczos -> SUPIR restoration -> source-color protection -> epiCPhotoGasm low-denoise texture pass -> natural tone -> restrained sharpness -> fine grain -> original FPS/audio video.\n\nDefaults copied from the tuned ComfyUI user workflow:\n- Scale: 2x Lanczos\n- SUPIR: strength 1.00-0.93, restore CFG 1.2, 10 steps, CFG 4\n- epiCPhotoGasm: 20 steps, CFG 5, denoise 0.18\n- Finish: tone 1.01/0.94/0.97, CAS 0.2, grain 0.01/0.02\n\nUse Queue Chunks on the controller. The default 0.25-second batch limits peak RAM/VRAM for the two diffusion passes; it does not change or discard source frames. Original FPS and audio are preserved.\n\nThis is a frame-batch restoration workflow, not a temporal generation model. Low denoise and source-color restoration reduce flicker, but cannot guarantee temporal consistency for every source.\n\nModels: juggernautXL_v9Rdphoto2Lightning.safetensors, SUPIR-v0Q_fp16.safetensors, epicphotogasm_ultimateFidelity.safetensors. SUPIR is non-commercial unless separately authorized; follow epiCPhotoGasm model-page permissions."
+      ]
+    },
+    {
+      "id": 1,
+      "type": "CheckpointLoaderSimple",
+      "pos": [
+        -160,
+        -260
+      ],
+      "size": [
+        480,
+        140
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "Checkpoint名称",
+          "name": "ckpt_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "ckpt_name"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "模型",
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            5
+          ]
+        },
+        {
+          "localized_name": "CLIP",
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            8,
+            9
+          ]
+        },
+        {
+          "localized_name": "VAE",
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            7,
+            24
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CheckpointLoaderSimple",
+        "enableTabs": false,
+        "tabWidth": 65,
+        "tabXOffset": 10,
+        "hasSecondTab": false,
+        "secondTabText": "Send Back",
+        "secondTabOffset": 80,
+        "secondTabWidth": 65,
+        "cnr_id": "comfy-core",
+        "ver": "0.18.1",
+        "models": [
+          {
+            "name": "juggernautXL_v9Rdphoto2Lightning.safetensors",
+            "url": "https://huggingface.co/AiWise/Juggernaut-XL-V9-GE-RDPhoto2-Lightning_4S/resolve/main/juggernautXL_v9Rdphoto2Lightning.safetensors",
+            "directory": "checkpoints"
+          }
+        ]
+      },
+      "widgets_values": [
+        "juggernautXL_v9Rdphoto2Lightning.safetensors"
+      ]
+    },
+    {
+      "id": 3,
+      "type": "ModelPatchLoader",
+      "pos": [
+        -160,
+        -70
+      ],
+      "size": [
+        480,
+        110
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "名称",
+          "name": "name",
+          "type": "COMBO",
+          "widget": {
+            "name": "name"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "模型补丁",
+          "name": "MODEL_PATCH",
+          "type": "MODEL_PATCH",
+          "links": [
+            6
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ModelPatchLoader",
+        "enableTabs": false,
+        "tabWidth": 65,
+        "tabXOffset": 10,
+        "hasSecondTab": false,
+        "secondTabText": "Send Back",
+        "secondTabOffset": 80,
+        "secondTabWidth": 65,
+        "cnr_id": "comfy-core",
+        "ver": "0.18.1",
+        "models": [
+          {
+            "name": "SUPIR-v0Q_fp16.safetensors",
+            "url": "https://huggingface.co/Kijai/SUPIR_pruned/resolve/main/SUPIR-v0Q_fp16.safetensors",
+            "directory": "model_patches"
+          }
+        ]
+      },
+      "widgets_values": [
+        "SUPIR-v0Q_fp16.safetensors"
+      ]
+    },
+    {
+      "id": 94,
+      "type": "ResizeImageMaskNode",
+      "pos": [
+        -160,
+        210
+      ],
+      "size": [
+        270,
+        148.65625
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "输入",
+          "name": "input",
+          "type": "IMAGE,MASK",
+          "link": 1
+        },
+        {
+          "localized_name": "调整类型",
+          "name": "resize_type",
+          "type": "COMFY_DYNAMICCOMBO_V3",
+          "widget": {
+            "name": "resize_type"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "resize_type.multiplier",
+          "name": "resize_type.multiplier",
+          "type": "FLOAT",
+          "widget": {
+            "name": "resize_type.multiplier"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "缩放方法",
+          "name": "scale_method",
+          "type": "COMBO",
+          "widget": {
+            "name": "scale_method"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "已调整大小",
+          "name": "resized",
+          "type": "IMAGE",
+          "links": [
+            2,
+            3,
+            4
+          ]
+        }
+      ],
+      "title": "2X Lanczos / 2倍 Lanczos",
+      "properties": {
+        "Node name for S&R": "ResizeImageMaskNode",
+        "enableTabs": false,
+        "tabWidth": 65,
+        "tabXOffset": 10,
+        "hasSecondTab": false,
+        "secondTabText": "Send Back",
+        "secondTabOffset": 80,
+        "secondTabWidth": 65,
+        "cnr_id": "comfy-core",
+        "ver": "0.18.1"
+      },
+      "widgets_values": [
+        "scale by multiplier",
+        2,
+        "lanczos"
+      ]
+    },
+    {
+      "id": 62,
+      "type": "SUPIRApply",
+      "pos": [
+        530,
+        -180
+      ],
+      "size": [
+        280,
+        299.328125
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "showAdvanced": true,
+      "inputs": [
+        {
+          "localized_name": "model",
+          "name": "model",
+          "type": "MODEL",
+          "link": 5
+        },
+        {
+          "localized_name": "model_patch",
+          "name": "model_patch",
+          "type": "MODEL_PATCH",
+          "link": 6
+        },
+        {
+          "localized_name": "vae",
+          "name": "vae",
+          "type": "VAE",
+          "link": 7
+        },
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "link": 2
+        },
+        {
+          "localized_name": "strength_start",
+          "name": "strength_start",
+          "type": "FLOAT",
+          "widget": {
+            "name": "strength_start"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "strength_end",
+          "name": "strength_end",
+          "type": "FLOAT",
+          "widget": {
+            "name": "strength_end"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "restore_cfg",
+          "name": "restore_cfg",
+          "type": "FLOAT",
+          "widget": {
+            "name": "restore_cfg"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "restore_cfg_s_tmin",
+          "name": "restore_cfg_s_tmin",
+          "type": "FLOAT",
+          "widget": {
+            "name": "restore_cfg_s_tmin"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "模型",
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            14,
+            15
+          ]
+        }
+      ],
+      "title": "SUPIR Fidelity / SUPIR 保真控制",
+      "properties": {
+        "Node name for S&R": "SUPIRApply",
+        "enableTabs": false,
+        "tabWidth": 65,
+        "tabXOffset": 10,
+        "hasSecondTab": false,
+        "secondTabText": "Send Back",
+        "secondTabOffset": 80,
+        "secondTabWidth": 65,
+        "cnr_id": "comfy-core",
+        "ver": "0.18.1"
+      },
+      "widgets_values": [
+        1,
+        0.93,
+        1.2,
+        0.05
+      ]
+    },
+    {
+      "id": 59,
+      "type": "CLIPTextEncodeSDXL",
+      "pos": [
+        180,
+        -250
+      ],
+      "size": [
+        225,
+        35.328125
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 10,
+      "mode": 0,
+      "showAdvanced": true,
+      "inputs": [
+        {
+          "localized_name": "clip",
+          "name": "clip",
+          "type": "CLIP",
+          "link": 8
+        },
+        {
+          "localized_name": "宽度",
+          "name": "width",
+          "type": "INT",
+          "widget": {
+            "name": "width"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "高度",
+          "name": "height",
+          "type": "INT",
+          "widget": {
+            "name": "height"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "裁剪宽",
+          "name": "crop_w",
+          "type": "INT",
+          "widget": {
+            "name": "crop_w"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "裁剪高",
+          "name": "crop_h",
+          "type": "INT",
+          "widget": {
+            "name": "crop_h"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "目标宽度",
+          "name": "target_width",
+          "type": "INT",
+          "widget": {
+            "name": "target_width"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "目标高度",
+          "name": "target_height",
+          "type": "INT",
+          "widget": {
+            "name": "target_height"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "文本_g",
+          "name": "text_g",
+          "type": "STRING",
+          "widget": {
+            "name": "text_g"
+          },
+          "link": 10
+        },
+        {
+          "localized_name": "文本_l",
+          "name": "text_l",
+          "type": "STRING",
+          "widget": {
+            "name": "text_l"
+          },
+          "link": 11
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "条件",
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            16
+          ]
+        }
+      ],
+      "title": "Positive Conditioning",
+      "properties": {
+        "Node name for S&R": "CLIPTextEncodeSDXL",
+        "enableTabs": false,
+        "tabWidth": 65,
+        "tabXOffset": 10,
+        "hasSecondTab": false,
+        "secondTabText": "Send Back",
+        "secondTabOffset": 80,
+        "secondTabWidth": 65,
+        "cnr_id": "comfy-core",
+        "ver": "0.18.1"
+      },
+      "widgets_values": [
+        1024,
+        1024,
+        0,
+        0,
+        1024,
+        1024,
+        "Cinematic, High Contrast, highly detailed, taken using a Canon EOS R camera, hyper detailed photo - realistic  aximum detail, 32k, Color Grading, ultra HD, extreme meticulous detailing, skin pore detailing, hyper sharpness, perfect without deformations, high quality, detailed, photograph of an old man",
+        "Cinematic, High Contrast, highly detailed, taken using a Canon EOS R camera, hyper detailed photo - realistic  aximum detail, 32k, Color Grading, ultra HD, extreme meticulous detailing, skin pore detailing, hyper sharpness, perfect without deformations, high quality, detailed, photograph of an old man"
+      ],
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 60,
+      "type": "CLIPTextEncodeSDXL",
+      "pos": [
+        180,
+        -80
+      ],
+      "size": [
+        225,
+        7.328125
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "clip",
+          "name": "clip",
+          "type": "CLIP",
+          "link": 9
+        },
+        {
+          "localized_name": "宽度",
+          "name": "width",
+          "type": "INT",
+          "widget": {
+            "name": "width"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "高度",
+          "name": "height",
+          "type": "INT",
+          "widget": {
+            "name": "height"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "裁剪宽",
+          "name": "crop_w",
+          "type": "INT",
+          "widget": {
+            "name": "crop_w"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "裁剪高",
+          "name": "crop_h",
+          "type": "INT",
+          "widget": {
+            "name": "crop_h"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "目标宽度",
+          "name": "target_width",
+          "type": "INT",
+          "widget": {
+            "name": "target_width"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "目标高度",
+          "name": "target_height",
+          "type": "INT",
+          "widget": {
+            "name": "target_height"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "文本_g",
+          "name": "text_g",
+          "type": "STRING",
+          "widget": {
+            "name": "text_g"
+          },
+          "link": 12
+        },
+        {
+          "localized_name": "文本_l",
+          "name": "text_l",
+          "type": "STRING",
+          "widget": {
+            "name": "text_l"
+          },
+          "link": 13
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "条件",
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            17
+          ]
+        }
+      ],
+      "title": "Negative Conditioning",
+      "properties": {
+        "Node name for S&R": "CLIPTextEncodeSDXL",
+        "enableTabs": false,
+        "tabWidth": 65,
+        "tabXOffset": 10,
+        "hasSecondTab": false,
+        "secondTabText": "Send Back",
+        "secondTabOffset": 80,
+        "secondTabWidth": 65,
+        "cnr_id": "comfy-core",
+        "ver": "0.18.1"
+      },
+      "widgets_values": [
+        1024,
+        1024,
+        0,
+        0,
+        1024,
+        1024,
+        "painting, oil painting, illustration, drawing, art, sketch, cartoon, CG Style, 3D render, unreal engine, blurring, dirty, messy, worst quality, low quality, frames, watermark, signature, jpeg artifacts, deformed, lowres, over-smooth bad quality, blurry, messy",
+        "painting, oil painting, illustration, drawing, art, sketch, cartoon, CG Style, 3D render, unreal engine, blurring, dirty, messy, worst quality, low quality, frames, watermark, signature, jpeg artifacts, deformed, lowres, over-smooth, bad quality, blurry, messy"
+      ],
+      "color": "#322",
+      "bgcolor": "#533"
+    },
+    {
+      "id": 58,
+      "type": "GetImageSize",
+      "pos": [
+        180,
+        250
+      ],
+      "size": [
+        270,
+        160
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "图像",
+          "name": "image",
+          "type": "IMAGE",
+          "link": 3
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "宽度",
+          "name": "width",
+          "type": "INT",
+          "links": [
+            20
+          ]
+        },
+        {
+          "localized_name": "高度",
+          "name": "height",
+          "type": "INT",
+          "links": [
+            21
+          ]
+        },
+        {
+          "localized_name": "批处理大小",
+          "name": "batch_size",
+          "type": "INT",
+          "links": [
+            26
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GetImageSize",
+        "enableTabs": false,
+        "tabWidth": 65,
+        "tabXOffset": 10,
+        "hasSecondTab": false,
+        "secondTabText": "Send Back",
+        "secondTabOffset": 80,
+        "secondTabWidth": 65,
+        "cnr_id": "comfy-core",
+        "ver": "0.18.1"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 57,
+      "type": "EmptyLatentImage",
+      "pos": [
+        180,
+        450
+      ],
+      "size": [
+        270,
+        150
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "宽度",
+          "name": "width",
+          "type": "INT",
+          "widget": {
+            "name": "width"
+          },
+          "link": 20
+        },
+        {
+          "localized_name": "高度",
+          "name": "height",
+          "type": "INT",
+          "widget": {
+            "name": "height"
+          },
+          "link": 21
+        },
+        {
+          "localized_name": "批量大小",
+          "name": "batch_size",
+          "type": "INT",
+          "widget": {
+            "name": "batch_size"
+          },
+          "link": 26
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "Latent",
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            22
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "EmptyLatentImage",
+        "enableTabs": false,
+        "tabWidth": 65,
+        "tabXOffset": 10,
+        "hasSecondTab": false,
+        "secondTabText": "Send Back",
+        "secondTabOffset": 80,
+        "secondTabWidth": 65,
+        "cnr_id": "comfy-core",
+        "ver": "0.18.1"
+      },
+      "widgets_values": [
+        512,
+        512,
+        1
+      ]
+    },
+    {
+      "id": 76,
+      "type": "KSamplerSelect",
+      "pos": [
+        530,
+        150
+      ],
+      "size": [
+        270,
+        90
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "采样器名称",
+          "name": "sampler_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "sampler_name"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "采样器",
+          "name": "SAMPLER",
+          "type": "SAMPLER",
+          "links": [
+            18
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "KSamplerSelect",
+        "enableTabs": false,
+        "tabWidth": 65,
+        "tabXOffset": 10,
+        "hasSecondTab": false,
+        "secondTabText": "Send Back",
+        "secondTabOffset": 80,
+        "secondTabWidth": 65,
+        "cnr_id": "comfy-core",
+        "ver": "0.18.1"
+      },
+      "widgets_values": [
+        "dpmpp_2m_sde"
+      ]
+    },
+    {
+      "id": 29,
+      "type": "BasicScheduler",
+      "pos": [
+        530,
+        300
+      ],
+      "size": [
+        270,
+        150
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "模型",
+          "name": "model",
+          "type": "MODEL",
+          "link": 14
+        },
+        {
+          "localized_name": "调度器",
+          "name": "scheduler",
+          "type": "COMBO",
+          "widget": {
+            "name": "scheduler"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "步数",
+          "name": "steps",
+          "type": "INT",
+          "widget": {
+            "name": "steps"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "降噪",
+          "name": "denoise",
+          "type": "FLOAT",
+          "widget": {
+            "name": "denoise"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "Sigmas",
+          "name": "SIGMAS",
+          "type": "SIGMAS",
+          "links": [
+            19
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "BasicScheduler",
+        "enableTabs": false,
+        "tabWidth": 65,
+        "tabXOffset": 10,
+        "hasSecondTab": false,
+        "secondTabText": "Send Back",
+        "secondTabOffset": 80,
+        "secondTabWidth": 65,
+        "cnr_id": "comfy-core",
+        "ver": "0.18.1"
+      },
+      "widgets_values": [
+        "sgm_uniform",
+        10,
+        1
+      ]
+    },
+    {
+      "id": 20,
+      "type": "SamplerCustom",
+      "pos": [
+        860,
+        -100
+      ],
+      "size": [
+        280,
+        500
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "showAdvanced": true,
+      "inputs": [
+        {
+          "localized_name": "模型",
+          "name": "model",
+          "type": "MODEL",
+          "link": 15
+        },
+        {
+          "localized_name": "正面条件",
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 16
+        },
+        {
+          "localized_name": "负面条件",
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 17
+        },
+        {
+          "localized_name": "采样器",
+          "name": "sampler",
+          "type": "SAMPLER",
+          "link": 18
+        },
+        {
+          "localized_name": "Sigmas",
+          "name": "sigmas",
+          "type": "SIGMAS",
+          "link": 19
+        },
+        {
+          "localized_name": "Latent",
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 22
+        },
+        {
+          "localized_name": "添加噪波",
+          "name": "add_noise",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "add_noise"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "噪波种子",
+          "name": "noise_seed",
+          "type": "INT",
+          "widget": {
+            "name": "noise_seed"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "cfg",
+          "name": "cfg",
+          "type": "FLOAT",
+          "widget": {
+            "name": "cfg"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "Latent",
+          "name": "output",
+          "type": "LATENT",
+          "links": [
+            23
+          ]
+        },
+        {
+          "localized_name": "降噪Latent",
+          "name": "denoised_output",
+          "type": "LATENT",
+          "links": []
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SamplerCustom",
+        "enableTabs": false,
+        "tabWidth": 65,
+        "tabXOffset": 10,
+        "hasSecondTab": false,
+        "secondTabText": "Send Back",
+        "secondTabOffset": 80,
+        "secondTabWidth": 65,
+        "cnr_id": "comfy-core",
+        "ver": "0.18.1"
+      },
+      "widgets_values": [
+        true,
+        402244474214267,
+        "fixed",
+        4
+      ]
+    },
+    {
+      "id": 11,
+      "type": "VAEDecodeTiled",
+      "pos": [
+        1190,
+        -10
+      ],
+      "size": [
+        300,
+        230
+      ],
+      "flags": {},
+      "order": 17,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "Latent",
+          "name": "samples",
+          "type": "LATENT",
+          "link": 23
+        },
+        {
+          "localized_name": "vae",
+          "name": "vae",
+          "type": "VAE",
+          "link": 24
+        },
+        {
+          "localized_name": "分块尺寸",
+          "name": "tile_size",
+          "type": "INT",
+          "widget": {
+            "name": "tile_size"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "重叠",
+          "name": "overlap",
+          "type": "INT",
+          "widget": {
+            "name": "overlap"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "时间尺寸",
+          "name": "temporal_size",
+          "type": "INT",
+          "widget": {
+            "name": "temporal_size"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "时间重叠",
+          "name": "temporal_overlap",
+          "type": "INT",
+          "widget": {
+            "name": "temporal_overlap"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "图像",
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            25
+          ]
+        }
+      ],
+      "title": "SUPIR Tiled Decode / SUPIR 分块解码",
+      "properties": {
+        "Node name for S&R": "VAEDecodeTiled",
+        "cnr_id": "comfy-core",
+        "ver": "0.20.1"
+      },
+      "widgets_values": [
+        512,
+        64,
+        64,
+        8
+      ]
+    },
+    {
+      "id": 39,
+      "type": "ColorTransfer",
+      "pos": [
+        1460,
+        -10
+      ],
+      "size": [
+        277.609375,
+        172.65625
+      ],
+      "flags": {},
+      "order": 18,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "image_target",
+          "name": "image_target",
+          "type": "IMAGE",
+          "link": 25
+        },
+        {
+          "localized_name": "image_ref",
+          "name": "image_ref",
+          "type": "IMAGE",
+          "link": 4
+        },
+        {
+          "localized_name": "method",
+          "name": "method",
+          "type": "COMBO",
+          "widget": {
+            "name": "method"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "source_stats",
+          "name": "source_stats",
+          "type": "COMFY_DYNAMICCOMBO_V3",
+          "widget": {
+            "name": "source_stats"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "strength",
+          "name": "strength",
+          "type": "FLOAT",
+          "widget": {
+            "name": "strength"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            32
+          ]
+        }
+      ],
+      "title": "Restore Source Color / 原图色彩回正",
+      "properties": {
+        "Node name for S&R": "ColorTransfer",
+        "enableTabs": false,
+        "tabWidth": 65,
+        "tabXOffset": 10,
+        "hasSecondTab": false,
+        "secondTabText": "Send Back",
+        "secondTabOffset": 80,
+        "secondTabWidth": 65,
+        "cnr_id": "comfy-core",
+        "ver": "0.18.1"
+      },
+      "widgets_values": [
+        "mkl_lab",
+        "per_frame",
+        0.2
+      ]
+    },
+    {
+      "id": 106,
+      "type": "CheckpointLoaderSimple",
+      "pos": [
+        1780,
+        -250
+      ],
+      "size": [
+        500,
+        150
+      ],
+      "flags": {},
+      "order": 19,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "Checkpoint名称",
+          "name": "ckpt_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "ckpt_name"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "模型",
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            27
+          ]
+        },
+        {
+          "localized_name": "CLIP",
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            28,
+            30
+          ]
+        },
+        {
+          "localized_name": "VAE",
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            33,
+            39
+          ]
+        }
+      ],
+      "title": "epiCPhotoGasm Ultimate Fidelity",
+      "properties": {
+        "Node name for S&R": "CheckpointLoaderSimple",
+        "enableTabs": false,
+        "tabWidth": 65,
+        "tabXOffset": 10,
+        "hasSecondTab": false,
+        "secondTabText": "Send Back",
+        "secondTabOffset": 80,
+        "secondTabWidth": 65,
+        "cnr_id": "comfy-core",
+        "ver": "0.20.1",
+        "models": [
+          {
+            "name": "epicphotogasm_ultimateFidelity.safetensors",
+            "url": "https://civitai.com/api/download/models/429454",
+            "directory": "checkpoints"
+          }
+        ]
+      },
+      "widgets_values": [
+        "epicphotogasm_ultimateFidelity.safetensors"
+      ]
+    },
+    {
+      "id": 107,
+      "type": "CLIPTextEncode",
+      "pos": [
+        1780,
+        -40
+      ],
+      "size": [
+        229.71875,
+        7.328125
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 20,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "clip",
+          "name": "clip",
+          "type": "CLIP",
+          "link": 28
+        },
+        {
+          "localized_name": "文本",
+          "name": "text",
+          "type": "STRING",
+          "widget": {
+            "name": "text"
+          },
+          "link": 29
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "条件",
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            34
+          ]
+        }
+      ],
+      "title": "Texture Positive / 质感正向",
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode",
+        "cnr_id": "comfy-core",
+        "ver": "0.20.1"
+      },
+      "widgets_values": [
+        "natural editorial portrait, truthful skin texture, soft highlight roll-off, clean neutral color"
+      ]
+    },
+    {
+      "id": 108,
+      "type": "CLIPTextEncode",
+      "pos": [
+        1780,
+        100
+      ],
+      "size": [
+        236.84375,
+        7.328125
+      ],
+      "flags": {
+        "collapsed": true
+      },
+      "order": 21,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "clip",
+          "name": "clip",
+          "type": "CLIP",
+          "link": 30
+        },
+        {
+          "localized_name": "文本",
+          "name": "text",
+          "type": "STRING",
+          "widget": {
+            "name": "text"
+          },
+          "link": 31
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "条件",
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            35
+          ]
+        }
+      ],
+      "title": "Texture Negative / 质感负向",
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode",
+        "cnr_id": "comfy-core",
+        "ver": "0.20.1"
+      },
+      "widgets_values": [
+        "plastic skin, beauty filter, oversharpening, halos, HDR, CGI"
+      ]
+    },
+    {
+      "id": 109,
+      "type": "HyperTile",
+      "pos": [
+        2320,
+        -250
+      ],
+      "size": [
+        317.875,
+        190
+      ],
+      "flags": {},
+      "order": 22,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "模型",
+          "name": "model",
+          "type": "MODEL",
+          "link": 27
+        },
+        {
+          "localized_name": "分块尺寸",
+          "name": "tile_size",
+          "type": "INT",
+          "widget": {
+            "name": "tile_size"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "分割尺寸",
+          "name": "swap_size",
+          "type": "INT",
+          "widget": {
+            "name": "swap_size"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "最大深度",
+          "name": "max_depth",
+          "type": "INT",
+          "widget": {
+            "name": "max_depth"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "规模深度",
+          "name": "scale_depth",
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "scale_depth"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "模型",
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            36
+          ]
+        }
+      ],
+      "title": "High Resolution Attention / 高分辨率注意力",
+      "properties": {
+        "Node name for S&R": "HyperTile",
+        "cnr_id": "comfy-core",
+        "ver": "0.20.1"
+      },
+      "widgets_values": [
+        256,
+        2,
+        0,
+        false
+      ]
+    },
+    {
+      "id": 110,
+      "type": "VAEEncodeTiled",
+      "pos": [
+        2320,
+        20
+      ],
+      "size": [
+        300,
+        230
+      ],
+      "flags": {},
+      "order": 23,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "像素",
+          "name": "pixels",
+          "type": "IMAGE",
+          "link": 32
+        },
+        {
+          "localized_name": "vae",
+          "name": "vae",
+          "type": "VAE",
+          "link": 33
+        },
+        {
+          "localized_name": "分块尺寸",
+          "name": "tile_size",
+          "type": "INT",
+          "widget": {
+            "name": "tile_size"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "重叠",
+          "name": "overlap",
+          "type": "INT",
+          "widget": {
+            "name": "overlap"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "时间尺寸",
+          "name": "temporal_size",
+          "type": "INT",
+          "widget": {
+            "name": "temporal_size"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "时间重叠",
+          "name": "temporal_overlap",
+          "type": "INT",
+          "widget": {
+            "name": "temporal_overlap"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "Latent",
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            37
+          ]
+        }
+      ],
+      "title": "Texture VAE Encode / 质感编码",
+      "properties": {
+        "Node name for S&R": "VAEEncodeTiled",
+        "cnr_id": "comfy-core",
+        "ver": "0.20.1"
+      },
+      "widgets_values": [
+        512,
+        64,
+        64,
+        8
+      ]
+    },
+    {
+      "id": 111,
+      "type": "KSampler",
+      "pos": [
+        2670,
+        -170
+      ],
+      "size": [
+        300,
+        480
+      ],
+      "flags": {},
+      "order": 24,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "模型",
+          "name": "model",
+          "type": "MODEL",
+          "link": 36
+        },
+        {
+          "localized_name": "正面条件",
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 34
+        },
+        {
+          "localized_name": "负面条件",
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 35
+        },
+        {
+          "localized_name": "Latent图像",
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 37
+        },
+        {
+          "localized_name": "种子",
+          "name": "seed",
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "步数",
+          "name": "steps",
+          "type": "INT",
+          "widget": {
+            "name": "steps"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "cfg",
+          "name": "cfg",
+          "type": "FLOAT",
+          "widget": {
+            "name": "cfg"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "采样器名称",
+          "name": "sampler_name",
+          "type": "COMBO",
+          "widget": {
+            "name": "sampler_name"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "调度器",
+          "name": "scheduler",
+          "type": "COMBO",
+          "widget": {
+            "name": "scheduler"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "降噪",
+          "name": "denoise",
+          "type": "FLOAT",
+          "widget": {
+            "name": "denoise"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "Latent",
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            38
+          ]
+        }
+      ],
+      "title": "epiC Texture Strength / epiC 质感强度",
+      "properties": {
+        "Node name for S&R": "KSampler",
+        "cnr_id": "comfy-core",
+        "ver": "0.20.1"
+      },
+      "widgets_values": [
+        402244474214267,
+        "fixed",
+        20,
+        5,
+        "dpmpp_2m_sde",
+        "karras",
+        0.18
+      ]
+    },
+    {
+      "id": 112,
+      "type": "VAEDecodeTiled",
+      "pos": [
+        3020,
+        -20
+      ],
+      "size": [
+        300,
+        230
+      ],
+      "flags": {},
+      "order": 25,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "Latent",
+          "name": "samples",
+          "type": "LATENT",
+          "link": 38
+        },
+        {
+          "localized_name": "vae",
+          "name": "vae",
+          "type": "VAE",
+          "link": 39
+        },
+        {
+          "localized_name": "分块尺寸",
+          "name": "tile_size",
+          "type": "INT",
+          "widget": {
+            "name": "tile_size"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "重叠",
+          "name": "overlap",
+          "type": "INT",
+          "widget": {
+            "name": "overlap"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "时间尺寸",
+          "name": "temporal_size",
+          "type": "INT",
+          "widget": {
+            "name": "temporal_size"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "时间重叠",
+          "name": "temporal_overlap",
+          "type": "INT",
+          "widget": {
+            "name": "temporal_overlap"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "图像",
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            40
+          ]
+        }
+      ],
+      "title": "Texture VAE Decode / 质感解码",
+      "properties": {
+        "Node name for S&R": "VAEDecodeTiled",
+        "cnr_id": "comfy-core",
+        "ver": "0.20.1"
+      },
+      "widgets_values": [
+        512,
+        64,
+        64,
+        8
+      ]
+    },
+    {
+      "id": 113,
+      "type": "LayerColor: BrightnessContrastV2",
+      "pos": [
+        3380,
+        -190
+      ],
+      "size": [
+        310,
+        170
+      ],
+      "flags": {},
+      "order": 26,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "link": 40
+        },
+        {
+          "localized_name": "brightness",
+          "name": "brightness",
+          "type": "FLOAT",
+          "widget": {
+            "name": "brightness"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "contrast",
+          "name": "contrast",
+          "type": "FLOAT",
+          "widget": {
+            "name": "contrast"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "saturation",
+          "name": "saturation",
+          "type": "FLOAT",
+          "widget": {
+            "name": "saturation"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            41
+          ]
+        }
+      ],
+      "title": "Natural Editorial Tone / 自然编辑影调",
+      "properties": {
+        "Node name for S&R": "LayerColor: BrightnessContrastV2"
+      },
+      "widgets_values": [
+        1.01,
+        0.94,
+        0.97
+      ]
+    },
+    {
+      "id": 114,
+      "type": "ImageCASharpening+",
+      "pos": [
+        3380,
+        40
+      ],
+      "size": [
+        310,
+        103.328125
+      ],
+      "flags": {},
+      "order": 27,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "image",
+          "name": "image",
+          "type": "IMAGE",
+          "link": 41
+        },
+        {
+          "localized_name": "amount",
+          "name": "amount",
+          "type": "FLOAT",
+          "widget": {
+            "name": "amount"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "图像",
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            42
+          ]
+        }
+      ],
+      "title": "Restrained Sharpness / 克制锐度",
+      "properties": {
+        "Node name for S&R": "ImageCASharpening+",
+        "cnr_id": "comfyui_essentials"
+      },
+      "widgets_values": [
+        0.2
+      ]
+    },
+    {
+      "id": 115,
+      "type": "FilmGrain",
+      "pos": [
+        3380,
+        190
+      ],
+      "size": [
+        310,
+        199.328125
+      ],
+      "flags": {},
+      "order": 28,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "input_image",
+          "name": "input_image",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 42
+        },
+        {
+          "localized_name": "switch",
+          "name": "switch",
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "switch"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "grain_strength",
+          "name": "grain_strength",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "grain_strength"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "saturation_blend",
+          "name": "saturation_blend",
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "saturation_blend"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "grain_distribution",
+          "name": "grain_distribution",
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "grain_distribution"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "image_output",
+          "name": "image_output",
+          "type": "IMAGE",
+          "links": [
+            43,
+            44
+          ]
+        }
+      ],
+      "title": "Fine Film Grain / 细腻胶片颗粒",
+      "properties": {
+        "Node name for S&R": "FilmGrain"
+      },
+      "widgets_values": [
+        true,
+        0.01,
+        0.02,
+        "Gaussian"
+      ]
+    },
+    {
+      "id": 118,
+      "type": "VHS_VideoCombine",
+      "pos": [
+        3760,
+        -190
+      ],
+      "size": [
+        520,
+        620
+      ],
+      "flags": {},
+      "order": 29,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 43
+        },
+        {
+          "name": "audio",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": 45
+        },
+        {
+          "name": "meta_batch",
+          "shape": 7,
+          "type": "VHS_BatchManager",
+          "link": null
+        },
+        {
+          "name": "vae",
+          "shape": 7,
+          "type": "VAE",
+          "link": null
+        },
+        {
+          "name": "frame_rate",
+          "type": "FLOAT",
+          "widget": {
+            "name": "frame_rate"
+          },
+          "link": 47
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Filenames",
+          "type": "VHS_FILENAMES",
+          "links": null
+        }
+      ],
+      "title": "SAVE MV 2X VIDEO / 保存 MV 2X 视频",
+      "properties": {
+        "cnr_id": "comfyui-videohelpersuite",
+        "ver": "1.7.9",
+        "Node name for S&R": "VHS_VideoCombine"
+      },
+      "widgets_values": {
+        "frame_rate": 24,
+        "loop_count": 0,
+        "filename_prefix": "video/ltx-director-pro-mv-upscale-2x",
+        "format": "video/h264-mp4",
+        "pix_fmt": "yuv420p",
+        "crf": 18,
+        "save_metadata": true,
+        "trim_to_audio": false,
+        "pingpong": false,
+        "save_output": true,
+        "videopreview": {
+          "hidden": false,
+          "paused": false,
+          "params": {
+            "filename": "ltx-director-pro-mv-upscale-2x.mp4",
+            "subfolder": "",
+            "type": "output",
+            "format": "video/h264-mp4",
+            "frame_rate": 24
+          }
+        }
+      }
+    },
+    {
+      "id": 119,
+      "type": "GetImageRangeFromBatch",
+      "pos": [
+        3760,
+        500
+      ],
+      "size": [
+        260,
+        110
+      ],
+      "flags": {},
+      "order": 30,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "start_index",
+          "name": "start_index",
+          "type": "INT",
+          "widget": {
+            "name": "start_index"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "num_frames",
+          "name": "num_frames",
+          "type": "INT",
+          "widget": {
+            "name": "num_frames"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "images",
+          "name": "images",
+          "type": "IMAGE",
+          "link": 44
+        },
+        {
+          "localized_name": "masks",
+          "name": "masks",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "IMAGE",
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            48
+          ]
+        },
+        {
+          "localized_name": "MASK",
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-kjnodes",
+        "ver": "1.0.0",
+        "Node name for S&R": "GetImageRangeFromBatch"
+      },
+      "widgets_values": [
+        -1,
+        1
+      ],
+      "color": "#222",
+      "bgcolor": "#000",
+      "title": "GET LAST MV FRAME / 获取 MV 尾帧"
+    },
+    {
+      "id": 120,
+      "type": "SaveImageKJ",
+      "pos": [
+        4070,
+        500
+      ],
+      "size": [
+        350,
+        120
+      ],
+      "flags": {},
+      "order": 31,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "images",
+          "name": "images",
+          "type": "IMAGE",
+          "link": 48
+        },
+        {
+          "localized_name": "filename_prefix",
+          "name": "filename_prefix",
+          "type": "STRING",
+          "widget": {
+            "name": "filename_prefix"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "output_folder",
+          "name": "output_folder",
+          "type": "STRING",
+          "widget": {
+            "name": "output_folder"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "caption_file_extension",
+          "name": "caption_file_extension",
+          "type": "STRING",
+          "widget": {
+            "name": "caption_file_extension"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "caption",
+          "name": "caption",
+          "shape": 7,
+          "type": "STRING",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "filename",
+          "name": "filename",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfyui-kjnodes",
+        "ver": "1.0.0",
+        "Node name for S&R": "SaveImageKJ"
+      },
+      "widgets_values": [
+        "video/ltx-director-pro-mv-upscale-tail-frame",
+        "output",
+        ""
+      ],
+      "color": "#222",
+      "bgcolor": "#000",
+      "title": "SAVE LAST MV FRAME PNG / 保存 MV 尾帧"
+    }
+  ],
+  "links": [
+    [
+      1,
+      116,
+      0,
+      94,
+      0,
+      "IMAGE"
+    ],
+    [
+      2,
+      94,
+      0,
+      62,
+      3,
+      "IMAGE"
+    ],
+    [
+      3,
+      94,
+      0,
+      58,
+      0,
+      "IMAGE"
+    ],
+    [
+      4,
+      94,
+      0,
+      39,
+      1,
+      "IMAGE"
+    ],
+    [
+      5,
+      1,
+      0,
+      62,
+      0,
+      "MODEL"
+    ],
+    [
+      6,
+      3,
+      0,
+      62,
+      1,
+      "MODEL_PATCH"
+    ],
+    [
+      7,
+      1,
+      2,
+      62,
+      2,
+      "VAE"
+    ],
+    [
+      8,
+      1,
+      1,
+      59,
+      0,
+      "CLIP"
+    ],
+    [
+      9,
+      1,
+      1,
+      60,
+      0,
+      "CLIP"
+    ],
+    [
+      10,
+      102,
+      0,
+      59,
+      7,
+      "STRING"
+    ],
+    [
+      11,
+      102,
+      0,
+      59,
+      8,
+      "STRING"
+    ],
+    [
+      12,
+      102,
+      1,
+      60,
+      7,
+      "STRING"
+    ],
+    [
+      13,
+      102,
+      1,
+      60,
+      8,
+      "STRING"
+    ],
+    [
+      14,
+      62,
+      0,
+      29,
+      0,
+      "MODEL"
+    ],
+    [
+      15,
+      62,
+      0,
+      20,
+      0,
+      "MODEL"
+    ],
+    [
+      16,
+      59,
+      0,
+      20,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      17,
+      60,
+      0,
+      20,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      18,
+      76,
+      0,
+      20,
+      3,
+      "SAMPLER"
+    ],
+    [
+      19,
+      29,
+      0,
+      20,
+      4,
+      "SIGMAS"
+    ],
+    [
+      20,
+      58,
+      0,
+      57,
+      0,
+      "INT"
+    ],
+    [
+      21,
+      58,
+      1,
+      57,
+      1,
+      "INT"
+    ],
+    [
+      22,
+      57,
+      0,
+      20,
+      5,
+      "LATENT"
+    ],
+    [
+      23,
+      20,
+      0,
+      11,
+      0,
+      "LATENT"
+    ],
+    [
+      24,
+      1,
+      2,
+      11,
+      1,
+      "VAE"
+    ],
+    [
+      25,
+      11,
+      0,
+      39,
+      0,
+      "IMAGE"
+    ],
+    [
+      26,
+      58,
+      2,
+      57,
+      2,
+      "INT"
+    ],
+    [
+      27,
+      106,
+      0,
+      109,
+      0,
+      "MODEL"
+    ],
+    [
+      28,
+      106,
+      1,
+      107,
+      0,
+      "CLIP"
+    ],
+    [
+      29,
+      102,
+      0,
+      107,
+      1,
+      "STRING"
+    ],
+    [
+      30,
+      106,
+      1,
+      108,
+      0,
+      "CLIP"
+    ],
+    [
+      31,
+      102,
+      1,
+      108,
+      1,
+      "STRING"
+    ],
+    [
+      32,
+      39,
+      0,
+      110,
+      0,
+      "IMAGE"
+    ],
+    [
+      33,
+      106,
+      2,
+      110,
+      1,
+      "VAE"
+    ],
+    [
+      34,
+      107,
+      0,
+      111,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      35,
+      108,
+      0,
+      111,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      36,
+      109,
+      0,
+      111,
+      0,
+      "MODEL"
+    ],
+    [
+      37,
+      110,
+      0,
+      111,
+      3,
+      "LATENT"
+    ],
+    [
+      38,
+      111,
+      0,
+      112,
+      0,
+      "LATENT"
+    ],
+    [
+      39,
+      106,
+      2,
+      112,
+      1,
+      "VAE"
+    ],
+    [
+      40,
+      112,
+      0,
+      113,
+      0,
+      "IMAGE"
+    ],
+    [
+      41,
+      113,
+      0,
+      114,
+      0,
+      "IMAGE"
+    ],
+    [
+      42,
+      114,
+      0,
+      115,
+      0,
+      "IMAGE"
+    ],
+    [
+      43,
+      115,
+      0,
+      118,
+      0,
+      "IMAGE"
+    ],
+    [
+      44,
+      115,
+      0,
+      119,
+      2,
+      "IMAGE"
+    ],
+    [
+      45,
+      116,
+      2,
+      118,
+      1,
+      "AUDIO"
+    ],
+    [
+      46,
+      116,
+      3,
+      117,
+      0,
+      "VHS_VIDEOINFO"
+    ],
+    [
+      47,
+      117,
+      0,
+      118,
+      4,
+      "FLOAT"
+    ],
+    [
+      48,
+      119,
+      0,
+      120,
+      0,
+      "IMAGE"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "Input, Prompt & Chunking",
+      "bounding": [
+        -750,
+        -560,
+        680,
+        1980
+      ],
+      "color": "#3f5368",
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "SUPIR Restoration",
+      "bounding": [
+        -200,
+        -310,
+        1940,
+        1080
+      ],
+      "color": "#4d4a6b",
+      "flags": {}
+    },
+    {
+      "id": 3,
+      "title": "epiCPhotoGasm Texture",
+      "bounding": [
+        1740,
+        -310,
+        1600,
+        700
+      ],
+      "color": "#6b5148",
+      "flags": {}
+    },
+    {
+      "id": 4,
+      "title": "Editorial Finish & Video Output",
+      "bounding": [
+        3340,
+        -230,
+        1000,
+        980
+      ],
+      "color": "#435d50",
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "frontendVersion": "1.42.11",
+    "ds": {
+      "scale": 0.55,
+      "offset": [
+        610,
+        430
+      ]
+    },
+    "workflowRendererVersion": "LG"
+  },
+  "version": 0.4
+}

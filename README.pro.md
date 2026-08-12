@@ -8,6 +8,7 @@
 - 镜头轨道控制
 - IC-LoRA 控制视频
 - 视频放大
+- MV 真人视频双扩散修复与 2x 放大
 - SUPIR 单图影像修复与质感增强
 - SeedDance 2.0 API 导演台实验工作流
 
@@ -26,6 +27,7 @@ pro-workflows/ltx-director-pro.json
 | `pro-workflows/ltx-director-pro.json` | 主入口。Director Pro + Long Auto 合并版，双控制视频、参考图、关键帧、脚本导入导出、Meta Info、分段 Continue / Re-gen。 | 推荐 |
 | `pro-workflows/ltx-director-pro-lip-sync.json` | 对口型：图 + 音频生成同长度视频，带 Meta Info 和 story script。 | 可用 |
 | `pro-workflows/ltx-director-pro-upscale.json` | 视频高清放大；支持分段 upscale 后自动拼接，带 Meta Info 和 story script。 | 可用 |
+| `pro-workflows/ltx-director-pro-mv-upscale.json` | MV 真人视频 2x 放大；SUPIR 修复后用 epiCPhotoGasm 增强真实摄影质感，保留原 FPS 和音频，支持小批次分段与自动拼接。 | 实验 |
 | `pro-workflows/ltx-director-pro-image.json` | 单图 SUPIR 修复 + epiCPhotoGasm 真实摄影质感增强；内置四档模板、自然编辑影调、细颗粒、对比预览和 Prefix 输出。 | 实验 |
 旧 `long-auto.json` / `pro-console.json` 已合并为 `ltx-director-pro.json`；旧 `lip-sync.json` / `upscale.json` 已改名为带 `ltx-director-pro-` 前缀的入口；旧单路 `camera.json` 已删除，运镜/动作控制统一收敛到 `ltx-director-pro.json`。
 
@@ -66,6 +68,27 @@ models/checkpoints/epicphotogasm_ultimateFidelity.safetensors
 epiCPhotoGasm 使用 [Civitai `Ultimate Fidelity` 版本](https://civitai.com/models/132632?modelVersionId=429454)，工作流内置官方下载元数据，但不分发模型文件。Civitai 当前权限要求署名、允许生成图商业使用、不允许模型衍生；使用时仍应以模型页面的最新许可为准。
 
 SUPIR 原项目声明为非商业使用；未另行获得作者许可前，这个工作流不应用于商业交付。
+
+## MV 真人视频放大
+
+入口：
+
+```text
+pro-workflows/ltx-director-pro-mv-upscale.json
+```
+
+这是独立于普通 `RealESRGAN` 视频放大的高质感链路，适合真人、现代 MV 和影视素材。它按 `原视频 -> 2x Lanczos -> SUPIR -> 20% 原色保护 -> epiCPhotoGasm 低重绘 -> 自然影调 -> 克制锐化 -> 细颗粒 -> 原 FPS/原音频合成` 执行；提示词仍可从四档影像模板中选择。
+
+默认值来自 2026-08-11 ComfyUI `user/default/workflows/ltx-director-pro-image.json` 中实际调整后的参数：
+
+- 输出尺寸：`scale by multiplier / 2 / lanczos`。
+- SUPIR：`strength 1.00 -> 0.93`、`restore_cfg 1.2`、`10 steps`、`CFG 4`。
+- epiCPhotoGasm：`20 steps / CFG 5 / dpmpp_2m_sde / karras / denoise 0.18`。
+- 收尾：影调 `1.01 / 0.94 / 0.97`、CAS `0.2`、Gaussian grain `0.01 / 0.02`。
+
+`MV UPSCALE CONTROLLER` 默认每次加载 `0.25s` 的完整连续帧，不跳帧，分段完成后执行现有缓存清理并自动拼接。这个设置只控制一次进入双扩散链路的帧批量，不改变源视频时长、帧率或音频；内存充足时可以增加 `chunk_seconds`，不足时可以继续降低到最少一帧对应的时长。
+
+该链路是逐帧批量修复，不是视频时序生成模型。低重绘和逐帧原色回正用于降低闪烁，但不能保证所有素材完全没有细节抖动；快速放大或需要绝对稳定时序时仍应使用 `ltx-director-pro-upscale.json`。
 
 ## Long Auto
 

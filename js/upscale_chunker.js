@@ -342,7 +342,7 @@ app.registerExtension({
           if (typeof window.shezwApplyGlobalPrefixToGraph === "function") {
             window.shezwApplyGlobalPrefixToGraph();
           }
-          const chunkSeconds = getNumberWidgetValue(node, "chunk_seconds", 0, 10, { min: 3, max: 300, integer: true });
+          const chunkSeconds = getNumberWidgetValue(node, "chunk_seconds", 0, 10, { min: 0.01, max: 300, integer: false });
           const segmentPrefix = `${getWidgetValue(node, "segment_prefix", 1, "video/upscale-segment") || "video/upscale-segment"}`.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
           const outputPrefix = `${getWidgetValue(node, "output_prefix", 2, "video/upscale-merged") || "video/upscale-merged"}`.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
           const cleanupWaitSeconds = getNumberWidgetValue(node, "cleanup_wait_seconds", 3, 12, { min: 0, max: 60, integer: true });
