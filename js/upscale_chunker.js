@@ -37,6 +37,54 @@ const SHEZW_UPSCALE_STYLES = `
     line-height: 1.45;
     word-break: break-word;
   }
+  .shezw-upscale-dialog-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.62);
+  }
+  .shezw-upscale-dialog {
+    width: min(480px, calc(100vw - 32px));
+    padding: 18px;
+    border: 1px solid #555;
+    border-radius: 6px;
+    background: #202124;
+    color: #eee;
+    box-shadow: 0 16px 44px rgba(0, 0, 0, 0.45);
+    font: 13px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  .shezw-upscale-dialog-title {
+    margin-bottom: 10px;
+    font-size: 15px;
+    font-weight: 700;
+  }
+  .shezw-upscale-dialog-message {
+    color: #ccc;
+    line-height: 1.55;
+    white-space: pre-wrap;
+  }
+  .shezw-upscale-dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 18px;
+  }
+  .shezw-upscale-dialog-actions button {
+    min-width: 88px;
+    padding: 8px 12px;
+    border: 1px solid #555;
+    border-radius: 4px;
+    background: #303238;
+    color: #eee;
+    cursor: pointer;
+  }
+  .shezw-upscale-dialog-actions button[data-choice="yes"] {
+    border-color: #6f9bd1;
+    background: #294665;
+  }
 `;
 
 if (!document.getElementById("shezw-upscale-chunker-styles")) {
@@ -203,7 +251,7 @@ function sanitizePromptOutputs(prompt, outputNodeIds = []) {
   return prompt;
 }
 
-async function queueGraphPrompt(outputNodeIds = []) {
+async function queueGraphPrompt(outputNodeIds = [], { preserveModelCache = false } = {}) {
   if (!app?.graphToPrompt || !api) throw new Error("ComfyUI graphToPrompt API is unavailable.");
   const prompt = sanitizePromptOutputs(await app.graphToPrompt(), outputNodeIds);
   const resp = await api.fetchApi("/prompt", {
@@ -215,7 +263,8 @@ async function queueGraphPrompt(outputNodeIds = []) {
       extra_data: {
         extra_pnginfo: { workflow: prompt.workflow },
         shezw_upscale_chunk: true,
-        shezw_unload_models_after_prompt: true,
+        shezw_preserve_model_cache: preserveModelCache,
+        shezw_unload_models_after_prompt: !preserveModelCache,
       },
     }),
   });
@@ -243,13 +292,18 @@ async function waitForHistory(promptId, timeoutMs = 1000 * 60 * 60 * 8) {
   throw new Error(`Timed out waiting for prompt ${promptId}.`);
 }
 
-async function freeComfyMemory(promptId = null, waitSeconds = 12) {
+async function freeComfyMemory(promptId = null, waitSeconds = 12, preserveModels = false) {
   const wait = Math.max(0, Math.min(60, Number(waitSeconds) || 0));
   try {
     const cleanupResp = await api.fetchApi("/shezw/upscale/cleanup", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt_id: promptId, wait_seconds: wait, unload_models: true }),
+      body: JSON.stringify({
+        prompt_id: promptId,
+        wait_seconds: wait,
+        unload_models: !preserveModels,
+        preserve_models: preserveModels,
+      }),
     });
     if (cleanupResp.ok) return;
   } catch (err) {
@@ -268,6 +322,11 @@ async function freeComfyMemory(promptId = null, waitSeconds = 12) {
     }
   }
 
+  if (preserveModels) {
+    if (wait > 0) await sleep(wait * 1000);
+    return;
+  }
+
   try {
     await api.fetchApi("/free", {
       method: "POST",
@@ -280,16 +339,78 @@ async function freeComfyMemory(promptId = null, waitSeconds = 12) {
   if (wait > 0) await sleep(wait * 1000);
 }
 
-async function findExistingSegments(segmentPrefix, count) {
+async function findExistingSegments(segmentPrefix, count, contiguousStart = 0) {
   if (!count) return { found: [], missing: [] };
-  const params = new URLSearchParams({ segment_prefix: segmentPrefix, count: String(count) });
+  const params = new URLSearchParams({
+    segment_prefix: segmentPrefix,
+    count: String(count),
+    contiguous_start: String(contiguousStart),
+  });
   const resp = await api.fetchApi(`/shezw/upscale/find_segments?${params.toString()}`);
   const data = await resp.json();
   if (!resp.ok) throw new Error(data.error || "查找已有分段失败");
   return {
     found: Array.isArray(data.found) ? data.found : [],
     missing: Array.isArray(data.missing) ? data.missing : [],
+    nextAvailable: Number.isFinite(Number(data.next_available))
+      ? Number(data.next_available)
+      : contiguousStart,
   };
+}
+
+function askSegmentConflict({ requestedStart, lastExisting, suggestedStart }) {
+  return new Promise((resolve) => {
+    const backdrop = document.createElement("div");
+    backdrop.className = "shezw-upscale-dialog-backdrop";
+    const dialog = document.createElement("div");
+    dialog.className = "shezw-upscale-dialog";
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+
+    const title = document.createElement("div");
+    title.className = "shezw-upscale-dialog-title";
+    title.textContent = "Segment files already exist / 分段文件已存在";
+    const message = document.createElement("div");
+    message.className = "shezw-upscale-dialog-message";
+    message.textContent = `起始分段 ${requestedStart} 已存在，当前前缀下最后一个已有分段是 ${lastExisting}。\n是否从 ${suggestedStart} 开始？\n\n“否”会保持起始序号不变并继续生成；“取消生成”会直接结束本次批处理。`;
+
+    const actions = document.createElement("div");
+    actions.className = "shezw-upscale-dialog-actions";
+    const choices = [
+      ["cancel", "取消生成 / Cancel"],
+      ["no", "否 / No"],
+      ["yes", "是 / Yes"],
+    ];
+    let settled = false;
+    const finish = (choice) => {
+      if (settled) return;
+      settled = true;
+      document.removeEventListener("keydown", onKeyDown, true);
+      backdrop.remove();
+      resolve(choice);
+    };
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") finish("cancel");
+    };
+    for (const [choice, label] of choices) {
+      const choiceButton = document.createElement("button");
+      choiceButton.type = "button";
+      choiceButton.dataset.choice = choice;
+      choiceButton.textContent = label;
+      choiceButton.addEventListener("click", () => finish(choice));
+      actions.appendChild(choiceButton);
+    }
+    backdrop.addEventListener("click", (event) => {
+      if (event.target === backdrop) finish("cancel");
+    });
+    dialog.appendChild(title);
+    dialog.appendChild(message);
+    dialog.appendChild(actions);
+    backdrop.appendChild(dialog);
+    document.body.appendChild(backdrop);
+    document.addEventListener("keydown", onKeyDown, true);
+    actions.querySelector('[data-choice="yes"]')?.focus();
+  });
 }
 
 function findUpscaleNodes() {
@@ -301,9 +422,26 @@ function findUpscaleNodes() {
   return { loadNode, combineNode };
 }
 
+function installUpscaleQueueHook() {
+  if (!app || typeof app.queuePrompt !== "function" || app.__shezwUpscaleQueueHookInstalled) return;
+  app.__shezwUpscaleQueueHookInstalled = true;
+  const originalQueuePrompt = app.queuePrompt.bind(app);
+  app.queuePrompt = async function (...args) {
+    const chunker = (app.graph?._nodes || []).find((node) => node?.type === "ShezwUpscaleChunker");
+    if (chunker?.__shezwQueueChunks) {
+      return await chunker.__shezwQueueChunks({ source: "run" });
+    }
+    return await originalQueuePrompt(...args);
+  };
+}
+
 app.registerExtension({
   name: "Shezw.UpscaleChunker",
+  async setup() {
+    installUpscaleQueueHook();
+  },
   async beforeRegisterNodeDef(nodeType, nodeData) {
+    installUpscaleQueueHook();
     if (nodeData.name !== "ShezwUpscaleChunker") return;
 
     const onNodeCreated = nodeType.prototype.onNodeCreated;
@@ -321,7 +459,7 @@ app.registerExtension({
       title.style.fontWeight = "700";
       const button = document.createElement("button");
       button.className = "shezw-upscale-btn";
-      button.textContent = "Queue Chunks";
+      button.textContent = "Batch Process / 批量处理";
       row.appendChild(title);
       row.appendChild(button);
 
@@ -334,10 +472,13 @@ app.registerExtension({
 
       const setStatus = (text) => { status.textContent = text; };
 
-      button.addEventListener("click", async (ev) => {
-        ev.stopPropagation();
+      const queueChunks = async () => {
+        if (node._isQueueingChunks) return { queued: false, reason: "already-running" };
+        node._isQueueingChunks = true;
         button.disabled = true;
         const restore = [];
+        let batchStarted = false;
+        let cleanupWaitSeconds = 12;
         try {
           if (typeof window.shezwApplyGlobalPrefixToGraph === "function") {
             window.shezwApplyGlobalPrefixToGraph();
@@ -345,8 +486,9 @@ app.registerExtension({
           const chunkSeconds = getNumberWidgetValue(node, "chunk_seconds", 0, 10, { min: 0.01, max: 300, integer: false });
           const segmentPrefix = `${getWidgetValue(node, "segment_prefix", 1, "video/upscale-segment") || "video/upscale-segment"}`.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
           const outputPrefix = `${getWidgetValue(node, "output_prefix", 2, "video/upscale-merged") || "video/upscale-merged"}`.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
-          const cleanupWaitSeconds = getNumberWidgetValue(node, "cleanup_wait_seconds", 3, 12, { min: 0, max: 60, integer: true });
+          cleanupWaitSeconds = getNumberWidgetValue(node, "cleanup_wait_seconds", 3, 12, { min: 0, max: 60, integer: true });
           const requestedStartSegment = getNumberWidgetValue(node, "start_segment_index", 4, 0, { min: 0, max: 100000, integer: true });
+          const preserveModelCache = node.properties?.shezw_preserve_model_cache === true;
           const { loadNode, combineNode } = findUpscaleNodes();
 
           const video = `${getWidgetValue(loadNode, "video", 0, "") || ""}`;
@@ -362,10 +504,7 @@ app.registerExtension({
           const totalFrames = Math.max(1, Number(info.frame_count || Math.round((info.duration || 0) * fps)));
           const chunkFrames = Math.max(1, Math.round(chunkSeconds * fps));
           const totalChunks = Math.ceil(totalFrames / chunkFrames);
-          const startSegment = Math.min(requestedStartSegment, Math.max(0, totalChunks - 1));
-          if (startSegment !== requestedStartSegment) {
-            setWidgetValue(node, "start_segment_index", startSegment, 4);
-          }
+          let startSegment = Math.min(requestedStartSegment, totalChunks);
 
           const watched = [
             [loadNode, "frame_load_cap", 4],
@@ -376,15 +515,42 @@ app.registerExtension({
             restore.push([n, name, index, getWidgetValue(n, name, index)]);
           }
 
-          const existing = startSegment > 0 ? await findExistingSegments(segmentPrefix, startSegment) : { found: [], missing: [] };
+          const scanned = await findExistingSegments(segmentPrefix, totalChunks, startSegment);
+          const foundIndices = new Set(scanned.found.map((item) => Number(item.index)));
+          if (scanned.nextAvailable > startSegment) {
+            const suggestedStart = scanned.nextAvailable;
+            const lastExisting = suggestedStart - 1;
+            const choice = await askSegmentConflict({
+              requestedStart: startSegment,
+              lastExisting,
+              suggestedStart,
+            });
+            if (choice === "cancel") {
+              setStatus("Cancelled: no chunks were queued. / 已取消：未提交任何分段。");
+              return { queued: false, cancelled: true };
+            }
+            if (choice === "yes") {
+              startSegment = suggestedStart;
+              setWidgetValue(node, "start_segment_index", startSegment, 4);
+            }
+          }
+
+          const existing = {
+            found: scanned.found.filter((item) => Number(item.index) < Math.min(startSegment, totalChunks)),
+            missing: Array.from({ length: Math.min(startSegment, totalChunks) }, (_, index) => index)
+              .filter((index) => !foundIndices.has(index)),
+          };
           if (existing.missing.length) {
             console.warn("[Shezw Upscale Chunker] missing previous segments", existing.missing);
           }
 
           setStatus(`Preparing memory cleanup before chunks ${startSegment}-${totalChunks - 1} (${chunkSeconds}s each, cleanup ${cleanupWaitSeconds}s).`);
           await freeComfyMemory(null, Math.min(cleanupWaitSeconds, 5));
+          batchStarted = true;
 
-          setStatus(`Queueing chunks ${startSegment}-${totalChunks - 1} of ${totalChunks} (${totalFrames} frames total, cleanup ${cleanupWaitSeconds}s).`);
+          setStatus(startSegment < totalChunks
+            ? `Queueing chunks ${startSegment}-${totalChunks - 1} of ${totalChunks} (${totalFrames} frames total, cleanup ${cleanupWaitSeconds}s).`
+            : `All ${totalChunks} source chunks already exist. Concatenating without new generation.`);
           const videos = [...existing.found];
           for (let i = startSegment; i < totalChunks; i++) {
             const start = i * chunkFrames;
@@ -404,13 +570,15 @@ app.registerExtension({
               outputNode: combineNode.id,
             });
 
-            const promptId = await queueGraphPrompt([combineNode.id]);
+            const promptId = await queueGraphPrompt([combineNode.id], { preserveModelCache });
             const history = await waitForHistory(promptId);
             const videoRef = extractVideoFromHistory(history, prefix);
             if (!videoRef) throw new Error(`Chunk ${i + 1} 完成但没有找到分段视频输出。`);
             videos.push(videoRef);
-            setStatus(`Chunk ${i + 1}/${totalChunks} saved. Cleaning memory for ${cleanupWaitSeconds}s...`);
-            await freeComfyMemory(promptId, cleanupWaitSeconds);
+            setStatus(preserveModelCache
+              ? `Chunk ${i + 1}/${totalChunks} saved. Releasing history and reusing fixed model cache...`
+              : `Chunk ${i + 1}/${totalChunks} saved. Cleaning memory for ${cleanupWaitSeconds}s...`);
+            await freeComfyMemory(promptId, preserveModelCache ? 0 : cleanupWaitSeconds, preserveModelCache);
           }
 
           const missingNote = existing.missing.length ? ` (${existing.missing.length} previous chunks missing)` : "";
@@ -424,16 +592,28 @@ app.registerExtension({
           if (!concatResp.ok) throw new Error(concatData.error || "拼接失败");
           const finalPath = [concatData.subfolder, concatData.filename].filter(Boolean).join("/");
           setStatus(`Done: output/${finalPath} (${concatData.method}, ${concatData.count} chunks)`);
+          return { queued: true, output: concatData };
         } catch (err) {
           console.error("[Shezw Upscale Chunker]", err);
           setStatus(`Error: ${err.message || err}`);
+          return { queued: false, error: err };
         } finally {
+          if (batchStarted) {
+            try { await freeComfyMemory(null, Math.min(cleanupWaitSeconds, 5), false); } catch (_) { }
+          }
           for (const [n, name, index, value] of restore.reverse()) {
             try { setWidgetValue(n, name, value, index); } catch (_) { }
           }
           app.graph.setDirtyCanvas(true, true);
           button.disabled = false;
+          node._isQueueingChunks = false;
         }
+      };
+
+      node.__shezwQueueChunks = queueChunks;
+      button.addEventListener("click", async (ev) => {
+        ev.stopPropagation();
+        await queueChunks({ source: "button" });
       });
 
       setTimeout(() => {

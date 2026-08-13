@@ -425,7 +425,8 @@
       "inputs": [],
       "outputs": [],
       "properties": {
-        "Node name for S&R": "ShezwUpscaleChunker"
+        "Node name for S&R": "ShezwUpscaleChunker",
+        "shezw_preserve_model_cache": true
       },
       "widgets_values": [
         0.25,
@@ -459,7 +460,7 @@
         "Node name for S&R": "MarkdownNote"
       },
       "widgets_values": [
-        "# MV 2X Photoreal Upscale\n\nPipeline: original video -> 2x Lanczos -> SUPIR restoration -> source-color protection -> epiCPhotoGasm low-denoise texture pass -> natural tone -> restrained sharpness -> fine grain -> original FPS/audio video.\n\nDefaults copied from the tuned ComfyUI user workflow:\n- Scale: 2x Lanczos\n- SUPIR: strength 1.00-0.93, restore CFG 1.2, 10 steps, CFG 4\n- epiCPhotoGasm: 20 steps, CFG 5, denoise 0.18\n- Finish: tone 1.01/0.94/0.97, CAS 0.2, grain 0.01/0.02\n\nUse Queue Chunks on the controller. The default 0.25-second batch limits peak RAM/VRAM for the two diffusion passes; it does not change or discard source frames. Original FPS and audio are preserved.\n\nThis is a frame-batch restoration workflow, not a temporal generation model. Low denoise and source-color restoration reduce flicker, but cannot guarantee temporal consistency for every source.\n\nModels: juggernautXL_v9Rdphoto2Lightning.safetensors, SUPIR-v0Q_fp16.safetensors, epicphotogasm_ultimateFidelity.safetensors. SUPIR is non-commercial unless separately authorized; follow epiCPhotoGasm model-page permissions."
+        "# MV 2X Photoreal Upscale\n\nPipeline: original video -> 2x Lanczos -> SUPIR restoration -> source-color protection -> epiCPhotoGasm low-denoise texture pass -> natural tone -> restrained sharpness -> fine grain -> original FPS/audio video.\n\nDefaults copied from the tuned ComfyUI user workflow:\n- Scale: 2x Lanczos\n- SUPIR: strength 1.00-0.93, restore CFG 1.2, 10 steps, CFG 4\n- epiCPhotoGasm: 20 steps, CFG 5, denoise 0.18\n- Finish: tone 1.01/0.94/0.97, CAS 0.2, grain 0.01/0.02\n\nUse Batch Process on the controller or the normal ComfyUI Run button; both use the same chunk queue. The default 0.25-second batch limits peak RAM/VRAM for the two diffusion passes; it does not change or discard source frames. Fixed diffusion models stay cached between chunks and are unloaded after the full batch. Original FPS and audio are preserved.\n\nThis is a frame-batch restoration workflow, not a temporal generation model. Low denoise and source-color restoration reduce flicker, but cannot guarantee temporal consistency for every source.\n\nModels: juggernautXL_v9Rdphoto2Lightning.safetensors, SUPIR-v0Q_fp16.safetensors, epicphotogasm_ultimateFidelity.safetensors. SUPIR is non-commercial unless separately authorized; follow epiCPhotoGasm model-page permissions."
       ]
     },
     {

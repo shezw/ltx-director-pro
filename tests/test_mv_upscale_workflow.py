@@ -103,6 +103,7 @@ class MvUpscaleWorkflowTests(unittest.TestCase):
             self.nodes[120]["widgets_values"][0],
             "video/ltx-director-pro-mv-upscale-tail-frame",
         )
+        self.assertIs(self.nodes[121]["properties"]["shezw_preserve_model_cache"], True)
 
     def test_story_script_covers_source_and_visible_quality_controls(self):
         properties = self.nodes[100]["properties"]
@@ -128,6 +129,42 @@ class MvUpscaleWorkflowTests(unittest.TestCase):
         self.assertEqual(regular_chunker["widgets_values"][0], 10)
         source = (ROOT / "js" / "upscale_chunker.js").read_text(encoding="utf-8")
         self.assertIn('min: 0.01, max: 300, integer: false', source)
+
+    def test_direct_run_uses_the_same_chunk_batch_entrypoint(self):
+        source = (ROOT / "js" / "upscale_chunker.js").read_text(encoding="utf-8")
+        self.assertIn("app.__shezwUpscaleQueueHookInstalled", source)
+        self.assertIn("chunker.__shezwQueueChunks", source)
+        self.assertIn('node.__shezwQueueChunks = queueChunks', source)
+        self.assertIn("Batch Process / 批量处理", source)
+
+    def test_existing_segment_conflicts_offer_cancel_no_and_yes(self):
+        source = (ROOT / "js" / "upscale_chunker.js").read_text(encoding="utf-8")
+        self.assertIn("askSegmentConflict", source)
+        self.assertIn('["cancel", "取消生成 / Cancel"]', source)
+        self.assertIn('["no", "否 / No"]', source)
+        self.assertIn('["yes", "是 / Yes"]', source)
+        self.assertIn("contiguous_start: String(contiguousStart)", source)
+        self.assertIn("if (scanned.nextAvailable > startSegment)", source)
+        self.assertIn('setWidgetValue(node, "start_segment_index", startSegment, 4)', source)
+
+        backend = (ROOT / "__init__.py").read_text(encoding="utf-8")
+        self.assertIn('request.query.get("contiguous_start", "0")', backend)
+        self.assertIn('"next_available": next_available', backend)
+
+    def test_mv_chunks_reuse_models_until_batch_completion(self):
+        frontend = (ROOT / "js" / "upscale_chunker.js").read_text(encoding="utf-8")
+        backend = (ROOT / "__init__.py").read_text(encoding="utf-8")
+        self.assertIn("shezw_preserve_model_cache: preserveModelCache", frontend)
+        self.assertIn("shezw_unload_models_after_prompt: !preserveModelCache", frontend)
+        self.assertIn("freeComfyMemory(promptId, preserveModelCache ? 0 : cleanupWaitSeconds, preserveModelCache)", frontend)
+        self.assertIn("Releasing history and reusing fixed model cache", frontend)
+        self.assertIn('extra_data.get("shezw_preserve_model_cache", False)', backend)
+        self.assertIn('chunk_cache_notes.append("prompt_cache_reused")', backend)
+        self.assertIn('preserve_models = bool(payload.get("preserve_models", False))', backend)
+
+        regular = json.loads(REGULAR_UPSCALE_PATH.read_text(encoding="utf-8"))
+        regular_chunker = next(node for node in regular["nodes"] if node["type"] == "ShezwUpscaleChunker")
+        self.assertNotIn("shezw_preserve_model_cache", regular_chunker.get("properties", {}))
 
     def test_serialized_links_match_node_inputs_and_outputs(self):
         self.assertEqual(len(self.workflow["links"]), self.workflow["last_link_id"])

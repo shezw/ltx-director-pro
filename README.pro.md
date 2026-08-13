@@ -34,7 +34,7 @@ pro-workflows/ltx-director-pro.json
 所有新版工作流都包含一个 `Meta Info` 面板：
 
 - 只显示全局 prefix 输入框和 `Gen` / `Apply` / `Import` / `Store` / `Export` 按钮。
-- `Gen` 会生成数字 ID，格式为 `YYYYMMDDHHMM` + 4 位随机数；`Apply` 会把当前图里 `filename_prefix`、`segment_prefix`、`output_prefix` 统一改到 `video/<ID>/...` 或 `image/<ID>/...`，普通 Queue 和 `Queue Chunks` 都会自动应用。
+- `Gen` 会生成数字 ID，格式为 `YYYYMMDDHHMM` + 4 位随机数；`Apply` 会把当前图里 `filename_prefix`、`segment_prefix`、`output_prefix` 统一改到 `video/<ID>/...` 或 `image/<ID>/...`，普通运行和 `Batch Process / 批量处理` 都会自动应用。
 - `Import` / `Store` / `Export` 处理 `*-ss.json`。它只保存内容相关字段，例如 Director 时间线、关键帧、参考图、控制视频、音频、裁切、时长、分辨率等，不保存整个 Comfy workflow。`Import` 也能读取旧版完整 workflow JSON，例如旧 `long-auto.json`，并自动抽取/迁移这些内容字段。
 - Store 会强制保存 LTXDirector 的内容设置字段，包括 `duration_seconds`、`frame_rate`、`custom_width`、`custom_height`、`resize_method`、`use_custom_audio`、`divisible_by`、`img_compression`、`timeline_data` 等；导入旧脚本时即使文件里带有旧版 `ss_struct`，也只会使用当前 workflow 内置结构，不会让脚本覆盖 workflow 结构。
 - Long Auto 每段完成或重置分段记忆后，会自动把当前 story script 写回默认文件 `${GLOBAL_PREFIX}-ltx-pro-ss.json`；重新导入脚本后也会按安全 prefix 扫描 `output/video/<GLOBAL_PREFIX>/`，用已有 segment video / tail-frame 文件补全分段完成状态。
@@ -86,7 +86,9 @@ pro-workflows/ltx-director-pro-mv-upscale.json
 - epiCPhotoGasm：`20 steps / CFG 5 / dpmpp_2m_sde / karras / denoise 0.18`。
 - 收尾：影调 `1.01 / 0.94 / 0.97`、CAS `0.2`、Gaussian grain `0.01 / 0.02`。
 
-`MV UPSCALE CONTROLLER` 默认每次加载 `0.25s` 的完整连续帧，不跳帧，分段完成后执行现有缓存清理并自动拼接。这个设置只控制一次进入双扩散链路的帧批量，不改变源视频时长、帧率或音频；内存充足时可以增加 `chunk_seconds`，不足时可以继续降低到最少一帧对应的时长。
+`MV UPSCALE CONTROLLER` 默认每次加载 `0.25s` 的完整连续帧，不跳帧，并在全部分段完成后自动拼接。面板里的 `Batch Process / 批量处理` 和 ComfyUI 顶部的普通“运行”使用同一个分段入口；普通运行不会再把完整视频一次送入双扩散链路。
+
+批处理开始前会从 `start_segment_index` 开始检查当前 `segment_prefix` 下连续存在的分段文件。如果 `00` 到 `09` 已存在，会提示是否从 `10` 继续；中间有缺段时则停在第一个空缺：`是`会更新起始序号，`否`保持当前序号直接生成，`取消生成`不会提交任务。MV 分段之间复用固定的 SUPIR、SDXL 与 epiCPhotoGasm 模型缓存，只清理上一段变化的帧输出；整个批次结束后才执行完整模型卸载，避免每段重新加载模型造成 Windows 私有提交内存持续增长。
 
 该链路是逐帧批量修复，不是视频时序生成模型。低重绘和逐帧原色回正用于降低闪烁，但不能保证所有素材完全没有细节抖动；快速放大或需要绝对稳定时序时仍应使用 `ltx-director-pro-upscale.json`。
 
@@ -199,7 +201,7 @@ video/<GLOBAL_PREFIX>/ltx-director-pro-tail-frame
 pro-workflows/ltx-director-pro-upscale.json
 ```
 
-普通短视频可以直接运行原链路。超过 60s 或内存/显存不够时，用 `CHUNKED UPSCALE CONTROLLER` 节点里的 `Queue Chunks`：
+`CHUNKED UPSCALE CONTROLLER` 节点里的 `Batch Process / 批量处理` 与 ComfyUI 顶部的普通“运行”都会进入同一个串行分段流程：
 
 - 自动读取 `VHS_LoadVideo` 的输入视频、真实 fps 和总帧数。
 - 每次只设置 `skip_first_frames + frame_load_cap` 加载一个小段。
@@ -215,11 +217,13 @@ pro-workflows/ltx-director-pro-upscale.json
 
 当前处理策略：
 
-- `Queue Chunks` 提交每个分段 prompt 时会额外标记 `shezw_upscale_chunk=true`。
-- 只有带这个标记的分段 prompt 才会临时禁用 ComfyUI executor output cache，避免大批量 `IMAGE` tensor 进入跨节点/跨 prompt 的 RAM cache。
-- 分段 prompt 完成后，后端会恢复原 cache 类型，并重建空的 `PromptExecutor` output/object cache。
-- 每段完成后会主动 `unload_models`、触发 ComfyUI model cleanup、`torch.cuda.empty_cache()` 和 Python `gc.collect()`。
+- 批量处理提交每个分段 prompt 时会额外标记 `shezw_upscale_chunk=true`。
+- 普通 RealESRGAN 分段 prompt 会临时禁用 ComfyUI executor output cache，避免大批量 `IMAGE` tensor 进入跨节点/跨 prompt 的 RAM cache。
+- 普通分段 prompt 完成后，后端会恢复原 cache 类型，并重建空的 `PromptExecutor` output/object cache。
+- 普通分段每次完成后会主动 `unload_models`、触发 ComfyUI model cleanup、`torch.cuda.empty_cache()` 和 Python `gc.collect()`。
 - 前端会先读取该分段的 history 输出并记录视频文件，再删除该 prompt history 并继续下一段。
+
+MV 双扩散工作流是例外：现场日志显示 `tracked_tensors_after=0` 时，逐段完整卸载和重新加载 SUPIR、SDXL、epiCPhotoGasm 仍会让 Windows 私有提交内存每段增加约 10GB。因此 MV 批次改为使用 ComfyUI 原生 cache 跨段保留固定模型节点；`skip_first_frames` / `frame_load_cap` 变化会让 `clean_unused()` 删除上一段 IMAGE/LATENT 输出，整个批次结束后再统一卸载模型。普通 RealESRGAN 工作流继续使用上述逐段完整清理策略。
 
 2026-06-19 现场日志确认：分段清理钩子已经安装并执行，`CacheType.NONE` 生效。加入 Windows native trim 后，`_heapmin`、`HeapCompact`、`SetProcessWorkingSetSize` 和 `EmptyWorkingSet` 都能执行，`rss/uss` 会明显下降；但 Windows 原生 `GetProcessMemoryInfo` 显示 `win_private_mb/PagefileUsage` 仍随每段增加，说明是 ComfyUI 进程私有提交内存没有释放，不是单纯 working set 显示问题。后端继续用 weakref 追踪 upscale chunk 执行期间各节点输出 tensor，日志字段 `tracked_tensors_after` 会列出清理后仍存活的大 tensor 来源节点、shape、大小和 referrer 摘要；同时记录 `comfy_pinned_mb` 以确认是否是 Comfy/PyTorch pinned host memory 池在增长。如果没有大 tensor 存活且 pinned memory 不增长，但 `win_private_mb` 仍增长，则问题更偏向 PyTorch/CRT/native allocator 内部保留。
 

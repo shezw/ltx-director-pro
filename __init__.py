@@ -503,22 +503,25 @@ def _format_tracked_tensor_snapshot(snapshot):
     return f"count={snapshot.get('count')},total_mb={snapshot.get('total_mb')},top=[{top_text}]"
 
 
-def _release_python_and_torch_memory(unload_models: bool = False):
+def _release_python_and_torch_memory(unload_models: bool = False, preserve_models: bool = False):
     notes = []
     before = _memory_snapshot()
-    try:
-        import comfy.model_management as model_management
-        if unload_models and hasattr(model_management, "unload_all_models"):
-            model_management.unload_all_models()
-            notes.append("unload_all_models")
-        if hasattr(model_management, "cleanup_models_gc"):
-            model_management.cleanup_models_gc()
-            notes.append("cleanup_models_gc")
-        if hasattr(model_management, "soft_empty_cache"):
-            model_management.soft_empty_cache()
-            notes.append("soft_empty_cache")
-    except Exception as exc:
-        notes.append(f"comfy_cleanup_failed:{exc}")
+    if preserve_models:
+        notes.append("preserve_model_cache")
+    else:
+        try:
+            import comfy.model_management as model_management
+            if unload_models and hasattr(model_management, "unload_all_models"):
+                model_management.unload_all_models()
+                notes.append("unload_all_models")
+            if hasattr(model_management, "cleanup_models_gc"):
+                model_management.cleanup_models_gc()
+                notes.append("cleanup_models_gc")
+            if hasattr(model_management, "soft_empty_cache"):
+                model_management.soft_empty_cache()
+                notes.append("soft_empty_cache")
+        except Exception as exc:
+            notes.append(f"comfy_cleanup_failed:{exc}")
 
     try:
         import torch
@@ -531,7 +534,8 @@ def _release_python_and_torch_memory(unload_models: bool = False):
         notes.append(f"torch_cleanup_failed:{exc}")
 
     gc.collect()
-    notes.extend(_trim_windows_native_memory())
+    if not preserve_models:
+        notes.extend(_trim_windows_native_memory())
     after = _memory_snapshot()
     tensors_after = _live_torch_tensor_snapshot()
     notes.append(f"mem_before[{_format_memory_snapshot(before)}]")
@@ -623,49 +627,55 @@ def _install_upscale_prompt_cleanup_patch():
 
     async def execute_async_with_upscale_cleanup(self, prompt, prompt_id, extra_data={}, execute_outputs=[]):
         cleanup_kind = _prompt_cleanup_kind(extra_data)
+        preserve_model_cache = bool(extra_data.get("shezw_preserve_model_cache", False))
         original_cache_type = getattr(self, "cache_type", None)
         chunk_cache_notes = []
         tracking_token = None
         cleanup_kind_token = None
         if cleanup_kind:
             _install_ltx_tae_preview_guard()
-            try:
-                none_cache_type = getattr(execution.CacheType, "NONE")
-                self.cache_type = none_cache_type
-                self.caches = cache_set_cls(cache_type=none_cache_type, cache_args=self.cache_args)
-                chunk_cache_notes.append("prompt_cache_type_none")
-            except Exception as exc:
-                chunk_cache_notes.append(f"prompt_cache_type_none_failed:{exc}")
+            if preserve_model_cache:
+                chunk_cache_notes.append("prompt_cache_reused")
+            else:
+                try:
+                    none_cache_type = getattr(execution.CacheType, "NONE")
+                    self.cache_type = none_cache_type
+                    self.caches = cache_set_cls(cache_type=none_cache_type, cache_args=self.cache_args)
+                    chunk_cache_notes.append("prompt_cache_type_none")
+                except Exception as exc:
+                    chunk_cache_notes.append(f"prompt_cache_type_none_failed:{exc}")
             tracking_token = _upscale_tracking_prompt_id.set(str(prompt_id))
             cleanup_kind_token = _cleanup_prompt_kind.set(cleanup_kind)
         try:
             return await original_execute_async(self, prompt, prompt_id, extra_data, execute_outputs)
         finally:
-            if not cleanup_kind:
-                return
-            unload_models = bool(extra_data.get("shezw_unload_models_after_prompt", True))
-            try:
-                # This is the important part: drop the executor-owned output/object
-                # caches that hold the large IMAGE tensors for this upscale chunk.
-                self.cache_type = original_cache_type
-                self.caches = cache_set_cls(cache_type=original_cache_type, cache_args=self.cache_args)
-                notes = _release_python_and_torch_memory(unload_models=unload_models)
-                tracked_tensors_after = _tracked_upscale_tensor_snapshot(str(prompt_id), include_referrers=True)
-                notes.append(f"tracked_tensors_after[{_format_tracked_tensor_snapshot(tracked_tensors_after)}]")
-                log.info(
-                    "[Shezw SegmentCleanup] Cleared executor caches after %s prompt %s; unload_models=%s; notes=%s",
-                    cleanup_kind,
-                    prompt_id,
-                    unload_models,
-                    ",".join(chunk_cache_notes + notes),
-                )
-            except Exception as exc:
-                log.warning("[Shezw SegmentCleanup] Executor cache cleanup failed after prompt %s: %s", prompt_id, exc)
-            finally:
-                if tracking_token is not None:
-                    _upscale_tracking_prompt_id.reset(tracking_token)
-                if cleanup_kind_token is not None:
-                    _cleanup_prompt_kind.reset(cleanup_kind_token)
+            if cleanup_kind:
+                unload_models = bool(extra_data.get("shezw_unload_models_after_prompt", True))
+                try:
+                    if not preserve_model_cache:
+                        # Rebuild the executor caches for isolated cleanup prompts.
+                        self.cache_type = original_cache_type
+                        self.caches = cache_set_cls(cache_type=original_cache_type, cache_args=self.cache_args)
+                    notes = _release_python_and_torch_memory(
+                        unload_models=unload_models,
+                        preserve_models=preserve_model_cache,
+                    )
+                    tracked_tensors_after = _tracked_upscale_tensor_snapshot(str(prompt_id), include_referrers=True)
+                    notes.append(f"tracked_tensors_after[{_format_tracked_tensor_snapshot(tracked_tensors_after)}]")
+                    log.info(
+                        "[Shezw SegmentCleanup] Cleared executor caches after %s prompt %s; unload_models=%s; notes=%s",
+                        cleanup_kind,
+                        prompt_id,
+                        unload_models,
+                        ",".join(chunk_cache_notes + notes),
+                    )
+                except Exception as exc:
+                    log.warning("[Shezw SegmentCleanup] Executor cache cleanup failed after prompt %s: %s", prompt_id, exc)
+                finally:
+                    if tracking_token is not None:
+                        _upscale_tracking_prompt_id.reset(tracking_token)
+                    if cleanup_kind_token is not None:
+                        _cleanup_prompt_kind.reset(cleanup_kind_token)
 
     executor_cls.execute_async = execute_async_with_upscale_cleanup
     executor_cls._shezw_upscale_cleanup_patch = True
@@ -890,6 +900,7 @@ async def shezw_upscale_cleanup(request):
         prompt_id = payload.get("prompt_id")
         wait_seconds = max(0.0, min(60.0, float(payload.get("wait_seconds", 12) or 0)))
         unload_models = bool(payload.get("unload_models", False))
+        preserve_models = bool(payload.get("preserve_models", False))
         memory_before = _memory_snapshot()
 
         queue = getattr(PromptServer.instance, "prompt_queue", None)
@@ -899,28 +910,30 @@ async def shezw_upscale_cleanup(request):
                     queue.delete_history_item(str(prompt_id))
                 except Exception:
                     pass
-            if unload_models:
-                queue.set_flag("unload_models", True)
-            queue.set_flag("free_memory", True)
+            if not preserve_models:
+                if unload_models:
+                    queue.set_flag("unload_models", True)
+                queue.set_flag("free_memory", True)
 
-        # Give ComfyUI's main execution loop time to consume the free_memory flag.
-        # That loop owns PromptExecutor.reset(), which is what drops cached frame batches.
+        # Full cleanup lets ComfyUI's execution loop consume the free-memory flag.
+        # Preserve mode only waits between chunks and keeps fixed model outputs cached.
         if wait_seconds > 0:
             await asyncio.sleep(wait_seconds)
 
         gc.collect()
-        cleanup_notes = []
-        try:
-            import comfy.model_management as model_management
-            if hasattr(model_management, "soft_empty_cache"):
-                model_management.soft_empty_cache()
-            if hasattr(model_management, "cleanup_models_gc"):
-                model_management.cleanup_models_gc()
-            if unload_models and hasattr(model_management, "unload_all_models"):
-                model_management.unload_all_models()
-            cleanup_notes.append("comfy_model_management")
-        except Exception as exc:
-            cleanup_notes.append(f"comfy_cleanup_failed:{exc}")
+        cleanup_notes = ["preserve_model_cache"] if preserve_models else []
+        if not preserve_models:
+            try:
+                import comfy.model_management as model_management
+                if hasattr(model_management, "soft_empty_cache"):
+                    model_management.soft_empty_cache()
+                if hasattr(model_management, "cleanup_models_gc"):
+                    model_management.cleanup_models_gc()
+                if unload_models and hasattr(model_management, "unload_all_models"):
+                    model_management.unload_all_models()
+                cleanup_notes.append("comfy_model_management")
+            except Exception as exc:
+                cleanup_notes.append(f"comfy_cleanup_failed:{exc}")
 
         try:
             import torch
@@ -931,7 +944,8 @@ async def shezw_upscale_cleanup(request):
                 cleanup_notes.append("torch_cuda")
         except Exception as exc:
             cleanup_notes.append(f"torch_cleanup_failed:{exc}")
-        cleanup_notes.extend(_trim_windows_native_memory())
+        if not preserve_models:
+            cleanup_notes.extend(_trim_windows_native_memory())
         memory_after = _memory_snapshot()
         tensors_after = _live_torch_tensor_snapshot()
         tracked_tensors_after = _tracked_upscale_tensor_snapshot(str(prompt_id) if prompt_id else None, include_referrers=True)
@@ -952,6 +966,7 @@ async def shezw_upscale_cleanup(request):
             "prompt_id": prompt_id,
             "wait_seconds": wait_seconds,
             "unload_models": unload_models,
+            "preserve_models": preserve_models,
             "notes": cleanup_notes,
             "memory_before": memory_before,
             "memory_after": memory_after,
@@ -1034,10 +1049,12 @@ async def shezw_upscale_find_segments(request):
     try:
         segment_prefix = _safe_output_prefix(request.query.get("segment_prefix", "video/upscale-segment"))
         count = max(0, min(100000, int(request.query.get("count", "0") or 0)))
+        contiguous_start = max(0, min(100000, int(request.query.get("contiguous_start", "0") or 0)))
         output_dir = folder_paths.get_output_directory()
         found = []
         missing = []
-        for index in range(count):
+
+        def find_segment(index):
             prefix = f"{segment_prefix}_{index:05d}"
             pattern = os.path.join(output_dir, *prefix.split("/")) + "*.mp4"
             candidates = [path for path in glob.glob(pattern) if os.path.isfile(path)]
@@ -1046,22 +1063,35 @@ async def shezw_upscale_find_segments(request):
                 -os.path.getmtime(path),
             ))
             if not candidates:
-                missing.append(index)
-                continue
+                return None
             path = candidates[0]
             rel = os.path.relpath(path, output_dir).replace("\\", "/")
-            found.append({
+            return {
                 "index": index,
                 "filename": os.path.basename(path),
                 "subfolder": os.path.dirname(rel).replace("\\", "/"),
                 "type": "output",
                 "mtime": os.path.getmtime(path),
-            })
+            }
+
+        for index in range(count):
+            item = find_segment(index)
+            if item is None:
+                missing.append(index)
+            else:
+                found.append(item)
+
+        next_available = contiguous_start
+        while next_available < 100000 and find_segment(next_available) is not None:
+            next_available += 1
+
         return web.json_response({
             "found": found,
             "missing": missing,
             "count": count,
             "segment_prefix": segment_prefix,
+            "contiguous_start": contiguous_start,
+            "next_available": next_available,
         })
     except Exception as exc:
         return web.json_response({"error": str(exc)}, status=400)
