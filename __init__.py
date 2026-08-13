@@ -8,6 +8,7 @@ from .ltx_director import LTXDirector
 from .ltx_director_guide import LTXDirectorGuide
 from .shezw_iclora_params import ShezwDirectorICLoRAParams, ShezwDirectorICLoRAGuide
 from .upscale_chunker import ShezwUpscaleChunker
+from .image_batch import ShezwImageBatchSave, ShezwImageBatchSource
 from .image_prompt_templates import ShezwImagePromptTemplate
 from .workflow_tools import ShezwGlobalPrefix, ShezwMetaInfo, ShezwStoryScript
 from comfy_api.latest import ComfyExtension, io
@@ -34,6 +35,7 @@ _upscale_tracking_prompt_id = contextvars.ContextVar("shezw_upscale_tracking_pro
 _cleanup_prompt_kind = contextvars.ContextVar("shezw_cleanup_prompt_kind", default=None)
 _tracked_upscale_tensors = []
 _preview_guard_logged_prompt_ids = set()
+_executor_cache_clearer = None
 
 
 def _safe_output_prefix(prefix: str) -> str:
@@ -551,6 +553,8 @@ def _prompt_cleanup_kind(extra_data):
         return "long_auto"
     if extra_data.get("shezw_upscale_chunk"):
         return "upscale"
+    if extra_data.get("shezw_image_batch"):
+        return "image_batch"
     if extra_data.get("shezw_cleanup_after_prompt"):
         return "prompt"
     return None
@@ -595,6 +599,7 @@ def _install_ltx_tae_preview_guard():
 
 
 def _install_upscale_prompt_cleanup_patch():
+    global _executor_cache_clearer
     try:
         import execution
     except Exception as exc:
@@ -610,6 +615,22 @@ def _install_upscale_prompt_cleanup_patch():
 
     original_execute_async = executor_cls.execute_async
     original_get_output_data = getattr(execution, "get_output_data", None)
+    active_executors = weakref.WeakSet()
+
+    def clear_active_executor_caches():
+        notes = []
+        for executor in list(active_executors):
+            try:
+                cache_type = getattr(executor, "cache_type", None)
+                executor.caches = cache_set_cls(cache_type=cache_type, cache_args=executor.cache_args)
+                notes.append("active_executor_cache_cleared")
+            except Exception as exc:
+                notes.append(f"active_executor_cache_clear_failed:{exc}")
+        if not notes:
+            notes.append("active_executor_cache_not_found")
+        return notes
+
+    _executor_cache_clearer = clear_active_executor_caches
 
     if original_get_output_data is not None and not getattr(execution, "_shezw_upscale_tensor_tracking_patch", False):
         async def get_output_data_with_upscale_tracking(*args, **kwargs):
@@ -626,8 +647,15 @@ def _install_upscale_prompt_cleanup_patch():
         execution._shezw_upscale_tensor_tracking_patch = True
 
     async def execute_async_with_upscale_cleanup(self, prompt, prompt_id, extra_data={}, execute_outputs=[]):
+        try:
+            active_executors.add(self)
+        except TypeError:
+            pass
         cleanup_kind = _prompt_cleanup_kind(extra_data)
         preserve_model_cache = bool(extra_data.get("shezw_preserve_model_cache", False))
+        clear_executor_cache_after_prompt = bool(
+            extra_data.get("shezw_clear_executor_cache_after_prompt", False)
+        )
         original_cache_type = getattr(self, "cache_type", None)
         chunk_cache_notes = []
         tracking_token = None
@@ -652,13 +680,16 @@ def _install_upscale_prompt_cleanup_patch():
             if cleanup_kind:
                 unload_models = bool(extra_data.get("shezw_unload_models_after_prompt", True))
                 try:
-                    if not preserve_model_cache:
+                    if not preserve_model_cache or clear_executor_cache_after_prompt:
                         # Rebuild the executor caches for isolated cleanup prompts.
                         self.cache_type = original_cache_type
                         self.caches = cache_set_cls(cache_type=original_cache_type, cache_args=self.cache_args)
+                        if clear_executor_cache_after_prompt:
+                            chunk_cache_notes.append("prompt_cache_cleared_after_batch")
+                    preserve_after_prompt = preserve_model_cache and not clear_executor_cache_after_prompt
                     notes = _release_python_and_torch_memory(
                         unload_models=unload_models,
-                        preserve_models=preserve_model_cache,
+                        preserve_models=preserve_after_prompt,
                     )
                     tracked_tensors_after = _tracked_upscale_tensor_snapshot(str(prompt_id), include_referrers=True)
                     notes.append(f"tracked_tensors_after[{_format_tracked_tensor_snapshot(tracked_tensors_after)}]")
@@ -901,6 +932,7 @@ async def shezw_upscale_cleanup(request):
         wait_seconds = max(0.0, min(60.0, float(payload.get("wait_seconds", 12) or 0)))
         unload_models = bool(payload.get("unload_models", False))
         preserve_models = bool(payload.get("preserve_models", False))
+        clear_executor_cache = bool(payload.get("clear_executor_cache", False))
         memory_before = _memory_snapshot()
 
         queue = getattr(PromptServer.instance, "prompt_queue", None)
@@ -922,6 +954,8 @@ async def shezw_upscale_cleanup(request):
 
         gc.collect()
         cleanup_notes = ["preserve_model_cache"] if preserve_models else []
+        if clear_executor_cache and callable(_executor_cache_clearer):
+            cleanup_notes.extend(_executor_cache_clearer())
         if not preserve_models:
             try:
                 import comfy.model_management as model_management
@@ -967,6 +1001,7 @@ async def shezw_upscale_cleanup(request):
             "wait_seconds": wait_seconds,
             "unload_models": unload_models,
             "preserve_models": preserve_models,
+            "clear_executor_cache": clear_executor_cache,
             "notes": cleanup_notes,
             "memory_before": memory_before,
             "memory_after": memory_after,
@@ -1121,6 +1156,8 @@ NODE_CLASS_MAPPINGS = {
     "ShezwDirectorICLoRAParams": ShezwDirectorICLoRAParams,
     "ShezwDirectorICLoRAGuide": ShezwDirectorICLoRAGuide,
     "ShezwUpscaleChunker": ShezwUpscaleChunker,
+    "ShezwImageBatchSource": ShezwImageBatchSource,
+    "ShezwImageBatchSave": ShezwImageBatchSave,
     "ShezwImagePromptTemplate": ShezwImagePromptTemplate,
     "ShezwMetaInfo": ShezwMetaInfo,
     "ShezwGlobalPrefix": ShezwGlobalPrefix,
@@ -1139,6 +1176,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ShezwDirectorICLoRAParams": "Shezw Director IC-LoRA Params",
     "ShezwDirectorICLoRAGuide": "Shezw Director IC-LoRA Guide",
     "ShezwUpscaleChunker": "Shezw Upscale Chunker",
+    "ShezwImageBatchSource": "Shezw Image Batch Source",
+    "ShezwImageBatchSave": "Shezw Image Batch Save",
     "ShezwImagePromptTemplate": "Shezw Image Prompt Templates",
     "ShezwMetaInfo": "Shezw Meta Info",
     "ShezwGlobalPrefix": "Shezw Global Prefix",

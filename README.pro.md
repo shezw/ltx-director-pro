@@ -9,7 +9,7 @@
 - IC-LoRA 控制视频
 - 视频放大
 - MV 真人视频双扩散修复与 2x 放大
-- SUPIR 单图影像修复与质感增强
+- SUPIR 批量图片修复与质感增强，原目录 `HD` 子文件夹同名输出
 - SeedDance 2.0 API 导演台实验工作流
 
 当前主力建议使用：
@@ -28,7 +28,7 @@ pro-workflows/ltx-director-pro.json
 | `pro-workflows/ltx-director-pro-lip-sync.json` | 对口型：图 + 音频生成同长度视频，带 Meta Info 和 story script。 | 可用 |
 | `pro-workflows/ltx-director-pro-upscale.json` | 视频高清放大；支持分段 upscale 后自动拼接，带 Meta Info 和 story script。 | 可用 |
 | `pro-workflows/ltx-director-pro-mv-upscale.json` | MV 真人视频 2x 放大；SUPIR 修复后用 epiCPhotoGasm 增强真实摄影质感，保留原 FPS 和音频，支持小批次分段与自动拼接。 | 实验 |
-| `pro-workflows/ltx-director-pro-image.json` | 单图 SUPIR 修复 + epiCPhotoGasm 真实摄影质感增强；内置四档模板、自然编辑影调、细颗粒、对比预览和 Prefix 输出。 | 实验 |
+| `pro-workflows/ltx-director-pro-image.json` | 批量图片 SUPIR 修复 + epiCPhotoGasm 真实摄影质感增强；逐张处理并自动写回原目录的 `HD` 子文件夹。 | 实验 |
 旧 `long-auto.json` / `pro-console.json` 已合并为 `ltx-director-pro.json`；旧 `lip-sync.json` / `upscale.json` 已改名为带 `ltx-director-pro-` 前缀的入口；旧单路 `camera.json` 已删除，运镜/动作控制统一收敛到 `ltx-director-pro.json`。
 
 所有新版工作流都包含一个 `Meta Info` 面板：
@@ -43,7 +43,7 @@ pro-workflows/ltx-director-pro.json
 
 ![Meta Info panel for global prefix and story script actions](pro-workflows/meta-info.png)
 
-## 单图影像修复
+## 批量影像修复
 
 快速实验入口：
 
@@ -51,11 +51,11 @@ pro-workflows/ltx-director-pro.json
 pro-workflows/ltx-director-pro-image.json
 ```
 
-这是独立的单图真人影像工作流，不包含视频、音频、LTX 时间线或 Qwen 自动描述。`Shezw Image Prompt Templates` 下拉节点内置四档提示词：`Hasselblad Portrait / 哈苏人像`、`Modern MV / 现代 MV`、`Film Look Test / 胶片定妆照` 和默认的 `Natural Cinema Master / 自然电影母版`。提示词保持简洁，并同时进入 SUPIR 的 SDXL CLIP 和 epiCPhotoGasm 的 SD 1.5 CLIP。
+这是独立的真人影像工作流，不包含视频、音频、LTX 时间线或 Qwen 自动描述。`Batch Source Images / 批量源图片` 可用系统文件框一次选择多张本地图片；点击节点内的 `Batch Process / 批量处理` 或 ComfyUI 顶部运行后，图片会逐张进入同一画质链路，而不是组成一个高内存 tensor batch。`Shezw Image Prompt Templates` 下拉节点内置四档提示词：`Hasselblad Portrait / 哈苏人像`、`Modern MV / 现代 MV`、`Film Look Test / 胶片定妆照` 和默认的 `Natural Cinema Master / 自然电影母版`。
 
-默认链路是 `Load Image -> SUPIR -> 20% MKL-LAB 原色保护 -> epiCPhotoGasm 低重绘 -> Natural Editorial Tone -> 低强度 CAS -> Fine Film Grain -> Before/After -> Save Image`。最终像素数默认为 `2.25 MP`；epiCPhotoGasm 使用独立 checkpoint、CLIP 和 VAE，以 `20 steps / CFG 5 / denoise 0.18` 增强真实皮肤、毛发和织物纹理，不与 SUPIR 的 SDXL 链路混接。
+默认链路是 `Batch Source -> SUPIR -> 20% MKL-LAB 原色保护 -> epiCPhotoGasm 低重绘 -> Natural Editorial Tone -> 低强度 CAS -> Fine Film Grain -> Before/After -> HD Same-name Output`。最终像素数默认为 `2.25 MP`；epiCPhotoGasm 使用独立 checkpoint、CLIP 和 VAE，以 `20 steps / CFG 5 / denoise 0.18` 增强真实皮肤、毛发和织物纹理，不与 SUPIR 的 SDXL 链路混接。
 
-默认影调以自然编辑人像为基线：保留皮肤纹理与细纹，柔化高光过渡，控制反差和锐化，并用低饱和 Gaussian 颗粒完成可重复的摄影质感。Meta Info 会把输出路径更新为 `image/<GLOBAL_PREFIX>/ltx-director-pro-image-final`；story script 记录输入图、模板、目标尺寸、SUPIR、epiCPhotoGasm、影调、锐化和颗粒参数。
+默认影调以自然编辑人像为基线：保留皮肤纹理与细纹，柔化高光过渡，控制反差和锐化，并用低饱和 Gaussian 颗粒完成可重复的摄影质感。每张结果自动保存为 `<原图目录>/HD/<原文件名>`，已存在的同名 HD 文件会被替换；该保存规则直接依赖源图路径，不使用 Meta Info prefix。源图列表、模板、目标尺寸、SUPIR、epiCPhotoGasm、影调、锐化和颗粒参数可由 story script 保存。批次内复用固定模型缓存，每张完成后清理上一条历史，整批结束后再完整卸载模型。
 
 需要 ComfyUI `0.20.1+` 的原生 SUPIR 支持，以及：
 

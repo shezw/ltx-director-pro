@@ -1,8 +1,8 @@
 {
   "id": "cfy-shezw-image-finish-supir",
-  "revision": 0,
+  "revision": 1,
   "last_node_id": 115,
-  "last_link_id": 44,
+  "last_link_id": 45,
   "nodes": [
     {
       "id": 100,
@@ -76,9 +76,9 @@
             },
             {
               "node_id": "101",
-              "node_type": "LoadImage",
+              "node_type": "ShezwImageBatchSource",
               "widgets": [
-                "image"
+                "files_json"
               ]
             },
             {
@@ -168,13 +168,6 @@
                 "saturation_blend",
                 "grain_distribution"
               ]
-            },
-            {
-              "node_id": "104",
-              "node_type": "SaveImage",
-              "widgets": [
-                "filename_prefix"
-              ]
             }
           ]
         },
@@ -247,22 +240,39 @@
     },
     {
       "id": 101,
-      "type": "LoadImage",
+      "type": "ShezwImageBatchSource",
       "pos": [
         -720,
         -80
       ],
       "size": [
-        430,
-        380
+        480,
+        190
       ],
       "flags": {},
       "order": 2,
       "mode": 0,
-      "inputs": [],
+      "inputs": [
+        {
+          "name": "files_json",
+          "type": "STRING",
+          "widget": {
+            "name": "files_json"
+          },
+          "link": null
+        },
+        {
+          "name": "current_index",
+          "type": "INT",
+          "widget": {
+            "name": "current_index"
+          },
+          "link": null
+        }
+      ],
       "outputs": [
         {
-          "name": "IMAGE",
+          "name": "image",
           "type": "IMAGE",
           "links": [
             1,
@@ -270,28 +280,36 @@
           ]
         },
         {
-          "name": "MASK",
+          "name": "mask",
           "type": "MASK",
           "links": []
+        },
+        {
+          "name": "source_path",
+          "type": "STRING",
+          "links": [
+            45
+          ]
+        },
+        {
+          "name": "source_name",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "total",
+          "type": "INT",
+          "links": null
         }
       ],
       "properties": {
-        "enableTabs": false,
-        "tabWidth": 65,
-        "tabXOffset": 10,
-        "hasSecondTab": false,
-        "secondTabText": "Send Back",
-        "secondTabOffset": 80,
-        "secondTabWidth": 65,
-        "cnr_id": "comfy-core",
-        "ver": "0.19.3",
-        "Node name for S&R": "LoadImage"
+        "Node name for S&R": "ShezwImageBatchSource"
       },
       "widgets_values": [
-        "input.png",
-        "image"
+        "[]",
+        0
       ],
-      "title": "Input Image / 输入图片"
+      "title": "Batch Source Images / 批量源图片"
     },
     {
       "id": 1,
@@ -1941,14 +1959,14 @@
     },
     {
       "id": 104,
-      "type": "SaveImage",
+      "type": "ShezwImageBatchSave",
       "pos": [
         3760,
         420
       ],
       "size": [
-        420,
-        180
+        460,
+        130
       ],
       "flags": {},
       "order": 24,
@@ -1958,25 +1976,25 @@
           "name": "images",
           "type": "IMAGE",
           "link": 44
+        },
+        {
+          "name": "source_path",
+          "type": "STRING",
+          "link": 45
         }
       ],
-      "outputs": [],
-      "properties": {
-        "enableTabs": false,
-        "tabWidth": 65,
-        "tabXOffset": 10,
-        "hasSecondTab": false,
-        "secondTabText": "Send Back",
-        "secondTabOffset": 80,
-        "secondTabWidth": 65,
-        "cnr_id": "comfy-core",
-        "ver": "0.19.3",
-        "Node name for S&R": "SaveImage"
-      },
-      "widgets_values": [
-        "image/ltx-director-pro-image-final"
+      "outputs": [
+        {
+          "name": "saved_path",
+          "type": "STRING",
+          "links": null
+        }
       ],
-      "title": "Final Image / 最终图片"
+      "properties": {
+        "Node name for S&R": "ShezwImageBatchSave"
+      },
+      "widgets_values": [],
+      "title": "HD Same-name Output / HD 同名输出"
     },
     {
       "id": 105,
@@ -2001,7 +2019,7 @@
         "Node name for S&R": "MarkdownNote"
       },
       "widgets_values": [
-        "# Natural Editorial Image Finish\n\nRequired ComfyUI: `0.20.1+`\n\nModels:\n- `models/checkpoints/juggernautXL_v9Rdphoto2Lightning.safetensors`\n- `models/model_patches/SUPIR-v0Q_fp16.safetensors`\n- `models/checkpoints/epicphotogasm_ultimateFidelity.safetensors`\n\nPipeline: SUPIR restoration -> low source-color protection -> epiCPhotoGasm SD 1.5 low-denoise texture pass -> natural tone -> restrained sharpness -> fine grain.\n\nepiCPhotoGasm is an independent SD 1.5 stage and must not replace the SDXL checkpoint used by SUPIR.\n\nLicense: SUPIR is restricted to non-commercial use unless separately authorized. epiCPhotoGasm requires creator credit; follow the Civitai model permissions and do not redistribute the checkpoint."
+        "# Natural Editorial Image Finish\n\nUse `Select Images` to choose one or more source files, then press `Batch Process` or the main ComfyUI Run button. Images are processed serially and saved as `<source folder>/HD/<same filename>`; an existing same-name HD result is replaced.\n\nRequired ComfyUI: `0.20.1+`\n\nModels:\n- `models/checkpoints/juggernautXL_v9Rdphoto2Lightning.safetensors`\n- `models/model_patches/SUPIR-v0Q_fp16.safetensors`\n- `models/checkpoints/epicphotogasm_ultimateFidelity.safetensors`\n\nPipeline: SUPIR restoration -> low source-color protection -> epiCPhotoGasm SD 1.5 low-denoise texture pass -> natural tone -> restrained sharpness -> fine grain.\n\nepiCPhotoGasm is an independent SD 1.5 stage and must not replace the SDXL checkpoint used by SUPIR.\n\nLicense: SUPIR is restricted to non-commercial use unless separately authorized. epiCPhotoGasm requires creator credit; follow the Civitai model permissions and do not redistribute the checkpoint."
       ]
     }
   ],
@@ -2357,6 +2375,14 @@
       104,
       0,
       "IMAGE"
+    ],
+    [
+      45,
+      101,
+      2,
+      104,
+      1,
+      "STRING"
     ]
   ],
   "groups": [

@@ -13,6 +13,7 @@ This branch includes Shezw's advanced LTX Director Pro workflows and local node 
 - Pro workflow guide: [README.pro.md](README.pro.md)
 - Workflow files: [pro-workflows/](pro-workflows/)
 - MV photoreal 2x upscale: [pro-workflows/ltx-director-pro-mv-upscale.json](pro-workflows/ltx-director-pro-mv-upscale.json)
+- Batch still-image finish with same-name `HD` output: [pro-workflows/ltx-director-pro-image.json](pro-workflows/ltx-director-pro-image.json)
 - Long-auto planner: [tools/long_auto_render.py](tools/long_auto_render.py)
 
 Core Pro features:

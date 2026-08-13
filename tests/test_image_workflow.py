@@ -6,13 +6,39 @@
 # @email   : hello@shezw.com
 
 import json
+import importlib.util
+import sys
+import tempfile
+import types
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from image_prompt_templates import DEFAULT_TEMPLATE, PROMPT_TEMPLATES
 
 
 WORKFLOW_PATH = Path(__file__).resolve().parents[1] / "pro-workflows" / "ltx-director-pro-image.json"
+IMAGE_BATCH_PATH = Path(__file__).resolve().parents[1] / "image_batch.py"
+IMAGE_BATCH_JS_PATH = Path(__file__).resolve().parents[1] / "js" / "image_batch.js"
+
+
+def load_image_batch_module():
+    class Routes:
+        @staticmethod
+        def post(_path):
+            return lambda function: function
+
+    aiohttp = types.ModuleType("aiohttp")
+    aiohttp.web = types.SimpleNamespace()
+    server = types.ModuleType("server")
+    server.PromptServer = types.SimpleNamespace(
+        instance=types.SimpleNamespace(routes=Routes())
+    )
+    spec = importlib.util.spec_from_file_location("image_batch_under_test", IMAGE_BATCH_PATH)
+    module = importlib.util.module_from_spec(spec)
+    with mock.patch.dict(sys.modules, {"aiohttp": aiohttp, "server": server}):
+        spec.loader.exec_module(module)
+    return module
 
 
 class ImageWorkflowTests(unittest.TestCase):
@@ -42,7 +68,8 @@ class ImageWorkflowTests(unittest.TestCase):
                 "ImageCASharpening+",
                 "FilmGrain",
                 "ImageCompare",
-                "SaveImage",
+                "ShezwImageBatchSource",
+                "ShezwImageBatchSave",
             }.issubset(node_types)
         )
         self.assertTrue({"CLIPLoader", "TextGenerate", "ComfySwitchNode"}.isdisjoint(node_types))
@@ -103,6 +130,7 @@ class ImageWorkflowTests(unittest.TestCase):
             (114, 0, 115, 1, "IMAGE"),
             (115, 0, 103, 1, "IMAGE"),
             (115, 0, 104, 0, "IMAGE"),
+            (101, 2, 104, 1, "STRING"),
         }
         self.assertTrue(expected.issubset(self.link_keys))
         self.assertEqual(self.nodes[62]["widgets_values"], [1, 0.93, 2.5, 0.05])
@@ -138,7 +166,58 @@ class ImageWorkflowTests(unittest.TestCase):
             fields_by_id["115"]["widgets"],
             ["switch", "grain_strength", "saturation_blend", "grain_distribution"],
         )
-        self.assertEqual(self.nodes[104]["widgets_values"][0], "image/ltx-director-pro-image-final")
+        self.assertEqual(fields_by_id["101"]["node_type"], "ShezwImageBatchSource")
+        self.assertEqual(fields_by_id["101"]["widgets"], ["files_json"])
+        self.assertNotIn("104", fields_by_id)
+
+    def test_batch_source_and_hd_same_name_save_preserve_the_image_chain(self):
+        source = self.nodes[101]
+        save = self.nodes[104]
+        self.assertEqual(source["type"], "ShezwImageBatchSource")
+        self.assertEqual(source["widgets_values"], ["[]", 0])
+        self.assertEqual(
+            [output["name"] for output in source["outputs"]],
+            ["image", "mask", "source_path", "source_name", "total"],
+        )
+        self.assertEqual(save["type"], "ShezwImageBatchSave")
+        self.assertEqual([item["name"] for item in save["inputs"]], ["images", "source_path"])
+        self.assertEqual(save["widgets_values"], [])
+        self.assertTrue(
+            {
+                (101, 0, 94, 0, "IMAGE"),
+                (101, 0, 103, 0, "IMAGE"),
+                (115, 0, 104, 0, "IMAGE"),
+                (101, 2, 104, 1, "STRING"),
+            }.issubset(self.link_keys)
+        )
+
+    def test_batch_runtime_uses_native_multiselect_serial_prompts_and_hd_output(self):
+        python_source = IMAGE_BATCH_PATH.read_text(encoding="utf-8")
+        javascript_source = IMAGE_BATCH_JS_PATH.read_text(encoding="utf-8")
+        self.assertIn('Multiselect = $true', python_source)
+        self.assertIn('os.path.dirname(source), "HD", os.path.basename(source)', python_source)
+        self.assertIn("os.replace(temp_path, target)", python_source)
+        self.assertIn("for (let index = 0; index < files.length; index += 1)", javascript_source)
+        self.assertIn("await waitForHistory(promptId)", javascript_source)
+        self.assertIn("await cleanupPrompt(promptId, true)", javascript_source)
+        self.assertIn("await cleanupPrompt(null, false, 5)", javascript_source)
+        self.assertIn("app.__shezwImageBatchQueueHookInstalled", javascript_source)
+        self.assertIn("shezw_clear_executor_cache_after_prompt: isFinalImage", javascript_source)
+        self.assertIn("clear_executor_cache: !preserveModels", javascript_source)
+
+    def test_batch_path_resolution_preserves_source_name_and_rejects_missing_files(self):
+        image_batch = load_image_batch_module()
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "Portrait.JPG"
+            source.write_bytes(b"test")
+            files = image_batch._decode_selected_files(json.dumps([str(source), str(source)]))
+            self.assertEqual(files, [str(source)])
+            self.assertEqual(
+                image_batch.hd_output_path(str(source)),
+                str(Path(directory) / "HD" / "Portrait.JPG"),
+            )
+            with self.assertRaises(FileNotFoundError):
+                image_batch._decode_selected_files(json.dumps([str(Path(directory) / "missing.png")]))
 
     def test_serialized_links_match_node_inputs_and_outputs(self):
         self.assertEqual(len(self.workflow["links"]), self.workflow["last_link_id"])
